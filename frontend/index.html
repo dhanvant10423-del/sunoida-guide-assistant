@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#c60067">
+  <title>Sunoida · Guide Assistant</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css?v=figures-4">
+  <script src="/assets/inline-pages.js?v=figures-4" defer></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1m0-15c3-2 6-2 9-1v15c-3-1-6-1-9 1V5Z"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7m0-7-11 11M10 4H4v16h16v-6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+  </svg>
+
+  <button id="drawer-backdrop" class="drawer-backdrop" aria-label="Close guide menu" hidden></button>
+  <aside id="sidebar" class="sidebar" aria-label="Guide navigation">
+    <a class="brand" href="/" aria-label="Sunoida Guide Assistant home">
+      <span class="brand-mark">s<span>·</span></span>
+      <span><strong>sunoida<span class="brand-dot">.</span></strong><small>GUIDE ASSISTANT</small></span>
+    </a>
+    <button id="new-chat" class="new-chat"><svg class="icon"><use href="#i-plus"/></svg> New conversation <span class="new-shortcut">↗</span></button>
+    <div class="library-heading"><span>YOUR LIBRARY</span><span id="guide-count" class="count">—</span></div>
+    <button id="all-guides" class="all-guides active" aria-pressed="true"><svg class="icon"><use href="#i-book"/></svg><span>All product guides</span><span class="selection-dot"></span></button>
+    <div id="guide-list" class="guide-list"><p class="library-loading">Loading your guides…</p></div>
+    <div class="sidebar-bottom">
+      <div class="visual-note"><span class="note-icon"><svg class="icon"><use href="#i-image"/></svg></span><strong>See the original</strong><p>Answers include screenshots from your guides. Open an image for a closer look.</p></div>
+      <div class="local-note"><span class="status-dot"></span><span>Runs on your PC</span><svg class="icon"><use href="#i-shield"/></svg></div>
+      <p class="sidebar-footnote">Ollama · LangChain · ChromaDB</p>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="topbar">
+      <div class="topbar-title"><button id="menu-toggle" class="icon-button mobile-menu" aria-label="Open guide menu" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><span class="breadcrumb">Workspace <span>/</span></span><strong>Guide Assistant</strong><span class="version-pill">LOCAL</span></div>
+      <button id="export-chat" class="toolbar-button" aria-label="Export chat" disabled><svg class="icon"><use href="#i-download"/></svg><span>Export chat</span></button>
+    </header>
+
+    <div id="conversation-scroll" class="conversation-scroll">
+      <section id="welcome" class="welcome">
+        <div class="eyebrow"><span></span> YOUR SUNOIDA KNOWLEDGE, CONNECTED</div>
+        <div class="welcome-grid">
+          <div class="welcome-copy"><h1>Your guides.<br><span>Clear answers.</span></h1><p class="welcome-description">Find the right steps, understand a feature, and see relevant screenshots from your guides.</p><div class="capabilities"><span><svg class="icon"><use href="#i-check"/></svg>Product-focused answers</span><span><svg class="icon"><use href="#i-image"/></svg>Original guide screenshots</span></div></div>
+          <div id="guide-feature" class="guide-feature" hidden><div class="feature-heading"><svg class="icon"><use href="#i-book"/></svg><span>A LOOK INSIDE YOUR GUIDES</span><span class="feature-dot"></span></div><button id="feature-preview" class="feature-preview" aria-label="Open featured guide screenshot"><img id="feature-image" alt="Screenshot from a Sunoida product guide"><span class="feature-zoom"><svg class="icon"><use href="#i-external"/></svg> View screenshot</span></button><div class="feature-caption"><strong id="feature-title"></strong><span id="feature-page"></span></div></div>
+        </div>
+        <div class="starter-heading"><span>Start with a question</span><span>Or ask your own below <span aria-hidden="true">↙</span></span></div>
+        <div class="starter-grid">
+          <button class="starter" data-question="How do I configure an ETL feed in Vision ETL?"><span class="starter-tag tag-etl">ETL</span><strong>Configure an ETL feed</strong><span>Find the setup steps in the guide.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
+          <button class="starter" data-question="How do I create a Push API in Vision API Manager?"><span class="starter-tag tag-api">API</span><strong>Create a Push API</strong><span>Explore the configuration workflow.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
+          <button class="starter" data-question="What do the data quality scores mean in Vision AI Data Quality?"><span class="starter-tag tag-dq">DQ</span><strong>Understand quality scores</strong><span>Get a clear explanation with sources.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
+          <button class="starter" data-question="What can I do with dashboards in Vision Studio?"><span class="starter-tag tag-st">ST</span><strong>Explore Vision Studio</strong><span>Learn what the product guide covers.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
+        </div>
+      </section>
+      <section id="messages" class="messages" role="log" aria-label="Conversation" aria-live="polite"></section>
+    </div>
+
+    <div class="composer-area"><div class="composer-wrap">
+      <div class="scope-line"><svg class="icon"><use href="#i-book"/></svg><span>Searching:</span><strong id="scope-label">All product guides</strong><button id="clear-scope" hidden>Clear filter</button></div>
+      <form id="chat-form" class="composer">
+        <label class="sr-only" for="message">Ask a question about your Sunoida guides</label>
+        <textarea id="message" rows="2" maxlength="2000" placeholder="Ask anything about your Sunoida guides…" required></textarea>
+        <div class="composer-bottom"><span><svg class="icon"><use href="#i-image"/></svg> Guide screenshots included when available</span><div class="composer-actions"><span id="character-count">0 / 2000</span><button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button></div></div>
+      </form>
+      <div class="composer-footer"><p>Answers can make mistakes. Check the retrieved guide pages.</p><span>Enter to send · Shift + Enter for a new line</span></div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </div></div>
+  </main>
+
+  <dialog id="page-dialog" class="page-dialog" aria-labelledby="preview-title">
+    <div class="preview-toolbar"><div><span id="preview-kind" class="eyebrow">ORIGINAL GUIDE PAGE</span><h2 id="preview-title"></h2></div><button id="close-preview" class="icon-button" aria-label="Close page preview"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div id="preview-scroll" class="preview-scroll"><p id="preview-status" role="status">Loading page…</p><img id="page-image" alt=""></div>
+    <div class="preview-footer"><div class="page-controls"><button id="previous-page" class="icon-button" aria-label="Previous page"><svg class="icon rotate"><use href="#i-chevron"/></svg></button><span id="page-position"></span><button id="next-page" class="icon-button" aria-label="Next page"><svg class="icon"><use href="#i-chevron"/></svg></button></div><a id="open-pdf" class="pdf-link" target="_blank" rel="noopener">Open PDF <svg class="icon"><use href="#i-external"/></svg></a></div>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local document data, vectors and rendered images
+backend/docs/*
+!backend/docs/.gitkeep
+*.pdf
+backend/chroma_db/
+backend/.page_cache/
+backend/data/
+*.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Local archives
+*.zip
+/Sunoida Chatbot LangChain/
