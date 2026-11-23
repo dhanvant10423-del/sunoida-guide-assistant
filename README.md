@@ -118,8 +118,10 @@ Click **New chat** to open a blank conversation. Use the guide picker in the
 message box to search one guide or all guides. Changing the guide starts fresh
 answer context, and the transcript stays visible.
 
-The **Chats** sidebar saves up to 30 recent conversations with up to 40 messages
-each in the current browser. Open one to restore its messages and selected guide.
+The **Chats** sidebar saves pinned chats and up to 30 other recent chats, with up
+to 40 messages each in the current browser. Open one to restore its messages and
+selected guide. Search by title or message text. Use the chat options button
+to pin, rename, delete, copy, download, or share a transcript.
 The server's answer context is available while its session is active. Stopped
 or failed requests use a new session so unseen answers cannot affect the next
 question.

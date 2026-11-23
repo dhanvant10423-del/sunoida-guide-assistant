@@ -34,36 +34,73 @@ function loadConversation() {
   return blankConversation();
 }
 
-function loadHistory(fallback = []) {
+function loadHistory(fallback = { chats: [], deleted: [] }) {
   try {
     const saved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY));
-    return Array.isArray(saved) ? saved.filter((chat) => chat?.chatId && Array.isArray(chat.messages)) : fallback;
+    if (!saved) return fallback;
+    const chats = Array.isArray(saved) ? saved : saved.chats;
+    const deleted = Array.isArray(saved.deleted) ? saved.deleted : [];
+    if (!Array.isArray(chats)) return fallback;
+    return {
+      chats: chats.filter((chat) => chat?.chatId && Array.isArray(chat.messages) && !deleted.includes(chat.chatId)),
+      deleted,
+    };
   } catch {
     return fallback;
   }
 }
 
-const state = { guides: [], history: loadHistory(), controller: null, sequence: 0, viewer: null, ...loadConversation() };
+const history = loadHistory();
+const previousChat = loadConversation();
+const activeChat = history.deleted.includes(previousChat.chatId)
+  ? blankConversation()
+  : history.chats.find((chat) => chat.chatId === previousChat.chatId) || previousChat;
+const state = {
+  guides: [], history, controller: null, sequence: 0, viewer: null, toolChatId: null,
+  ...activeChat, messages: [...activeChat.messages],
+};
+
+function writeHistory(history, prune = false) {
+  const chats = [...history.chats];
+  while (true) {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({ ...history, chats }));
+      state.history = { ...history, chats };
+      return true;
+    } catch (error) {
+      const oldest = chats.findLastIndex((chat) => !chat.pinned && chat.chatId !== state.chatId);
+      if (!prune || error.name !== "QuotaExceededError" || oldest < 0) return false;
+      chats.splice(oldest, 1);
+    }
+  }
+}
 
 function saveConversation(archive = true) {
-  const { chatId, sessionId, selected, title, messages } = state;
-  const snapshot = { chatId, sessionId, selected, title, messages: messages.slice(-40) };
+  const { chatId, sessionId, selected, messages } = state;
+  const latest = loadHistory(state.history);
+  if (latest.deleted.includes(chatId)) {
+    state.history = latest;
+    activateChat(blankConversation(), false);
+    return false;
+  }
+  const saved = latest.chats.find((chat) => chat.chatId === chatId);
+  const title = saved?.title || state.title;
+  state.title = title;
+  const snapshot = { chatId, sessionId, selected, title, pinned: Boolean(saved?.pinned), messages: messages.slice(-40) };
   try {
     sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
   } catch { /* Chat can continue in the current page when storage is unavailable. */ }
   if (archive && messages.length) {
-    state.history = [snapshot, ...loadHistory(state.history).filter((chat) => chat.chatId !== chatId)].slice(0, 30);
-    // On a full browser store, save the most recent conversations first.
-    for (let count = state.history.length; count > 0; count--) {
-      try {
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(0, count)));
-        break;
-      } catch (error) {
-        if (error.name !== "QuotaExceededError") break;
-      }
+    const chats = [snapshot, ...latest.chats.filter((chat) => chat.chatId !== chatId)];
+    let recent = 0;
+    const next = { ...latest, chats: chats.filter((chat) => chat.pinned || recent++ < 30) };
+    if (!writeHistory(next, true)) {
+      state.history = next;
+      $("history-status").textContent = "Browser storage is unavailable. Recent changes may be lost when you close this tab.";
     }
   }
   showHistory();
+  return true;
 }
 const form = $("chat-form");
 const input = $("message");
@@ -73,6 +110,7 @@ const status = $("status");
 const dialog = $("page-dialog");
 const guideSelect = $("guide-select");
 const historyList = $("chat-history");
+const chatTools = $("chat-tools");
 
 function element(tag, className = "", text) {
   const node = document.createElement(tag);
@@ -186,22 +224,115 @@ function setScope(id) {
 
 function showHistory() {
   historyList.replaceChildren();
-  if (!state.history.length) {
-    historyList.append(element("p", "history-empty", "No previous chats yet"));
+  const query = $("chat-search").value.trim().toLowerCase();
+  const matches = state.history.chats.filter((chat) => {
+    return !query || chat.title?.toLowerCase().includes(query) ||
+      chat.messages.some((message) => message.text?.toLowerCase().includes(query));
+  });
+  if (!matches.length) {
+    historyList.append(element("p", "history-empty", query ? "No matching chats" : "No previous chats yet"));
     return;
   }
-  for (const chat of state.history) {
+  const ordered = [...matches].sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned)));
+  for (const chat of ordered) {
     const title = chat.title || "Untitled chat";
-    const button = element("button", "history-chat", title);
+    const row = element("div", "history-row");
+    const button = element("button", "history-chat");
     button.type = "button";
     button.title = title;
+    if (chat.pinned) {
+      button.append(icon("pin"));
+      button.setAttribute("aria-label", title + ", pinned");
+    }
+    button.append(element("span", "history-title", title));
     if (chat.chatId === state.chatId) button.setAttribute("aria-current", "true");
     button.addEventListener("click", () => {
       if (chat.chatId !== state.chatId) activateChat(chat);
       else if (window.innerWidth <= 700) setDrawer(false);
     });
-    historyList.append(button);
+    const options = element("button", "icon-button history-options");
+    options.type = "button";
+    options.title = "Chat options";
+    options.dataset.chatId = chat.chatId;
+    options.setAttribute("aria-label", "Options for " + title);
+    options.setAttribute("aria-haspopup", "dialog");
+    options.append(icon("more"));
+    options.addEventListener("click", () => openChatTools(chat.chatId));
+    row.append(button, options);
+    historyList.append(row);
   }
+}
+
+function selectedSavedChat() {
+  return loadHistory(state.history).chats.find((chat) => chat.chatId === state.toolChatId);
+}
+
+function showChatTool(panel) {
+  for (const id of ["chat-tools-actions", "chat-rename-form", "chat-share-panel", "chat-delete-panel"]) {
+    $(id).hidden = id !== panel;
+  }
+  $("chat-tools-status").textContent = "";
+}
+
+function openChatTools(chatId) {
+  state.toolChatId = chatId;
+  const chat = selectedSavedChat();
+  if (!chat) return;
+  $("chat-tools-name").textContent = chat.title || "Untitled chat";
+  $("pin-chat").textContent = chat.pinned ? "Unpin chat" : "Pin chat";
+  showChatTool("chat-tools-actions");
+  chatTools.showModal();
+}
+
+function updateSavedChat(changes) {
+  const latest = loadHistory(state.history);
+  const chat = latest.chats.find((item) => item.chatId === state.toolChatId);
+  if (!chat) return false;
+  const updated = { ...chat, ...changes };
+  if (!writeHistory({ ...latest, chats: latest.chats.map((item) => item === chat ? updated : item) })) {
+    $("chat-tools-status").textContent = "Could not save the change in this browser.";
+    return false;
+  }
+  if (chat.chatId === state.chatId) {
+    state.title = updated.title;
+    saveConversation(false);
+  } else {
+    showHistory();
+  }
+  return true;
+}
+
+function deleteSavedChat() {
+  const latest = loadHistory(state.history);
+  const id = state.toolChatId;
+  const next = {
+    chats: latest.chats.filter((chat) => chat.chatId !== id),
+    deleted: [...new Set([...latest.deleted, id])],
+  };
+  if (!writeHistory(next)) {
+    $("chat-tools-status").textContent = "Could not delete this chat from browser storage.";
+    return;
+  }
+  chatTools.close();
+  if (id === state.chatId) activateChat(blankConversation(), false);
+  else showHistory();
+  $("history-status").textContent = "Chat deleted.";
+}
+
+function transcriptText(chat) {
+  const title = chat.title || "Sunoida Guide Assistant";
+  return title + "\n\n" + chat.messages.map((message) => message.role + "\n" + message.text).join("\n\n---\n\n");
+}
+
+function downloadTranscript(chat) {
+  const url = URL.createObjectURL(new Blob([transcriptText(chat)], { type: "text/plain;charset=utf-8" }));
+  const link = element("a");
+  link.href = url;
+  link.download = "sunoida-conversation.txt";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function renderConversation() {
@@ -215,14 +346,14 @@ function renderConversation() {
   scrollToLatest();
 }
 
-function activateChat(chat) {
+function activateChat(chat, preservePending = true) {
   if (state.controller) {
     state.sequence++;
     state.controller.abort();
     state.controller = null;
     // A suspended server request can complete after leaving the chat.
     state.sessionId = newConversationId();
-    saveConversation();
+    if (preservePending) saveConversation();
   }
   const { chatId, sessionId, selected, title, messages } = chat;
   Object.assign(state, { chatId, sessionId, selected, title, messages: [...messages] });
@@ -539,7 +670,7 @@ async function submitQuestion(question) {
   makeUserMessage(message);
   state.messages.push({ role: "You", text: message });
   state.title ||= message.replace(/\s+/g, " ").slice(0, 120);
-  saveConversation();
+  if (!saveConversation()) return;
   updateComposer();
   $("export-chat").disabled = false;
   const pending = element("div", "pending");
@@ -648,17 +779,80 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && $("sidebar").classList.contains("open")) setDrawer(false);
 });
 $("new-chat").addEventListener("click", () => activateChat(blankConversation()));
-$("export-chat").addEventListener("click", () => {
-  const text = "Sunoida Guide Assistant\n\n" + state.messages.map((message) => `${message.role}\n${message.text}`).join("\n\n---\n\n");
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const link = element("a");
-  link.href = url;
-  link.download = "sunoida-conversation.txt";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+$("export-chat").addEventListener("click", () => downloadTranscript(state));
+$("chat-search").addEventListener("input", showHistory);
+$("close-chat-tools").addEventListener("click", () => chatTools.close());
+chatTools.addEventListener("close", () => {
+  const id = state.toolChatId;
+  state.toolChatId = null;
+  $("chat-share-text").value = "";
+  const trigger = Array.from(historyList.querySelectorAll(".history-options")).find((button) => button.dataset.chatId === id);
+  if (trigger && !$("sidebar").inert) trigger.focus();
 });
+document.querySelectorAll(".chat-tool-back").forEach((button) => {
+  button.addEventListener("click", () => {
+    showChatTool("chat-tools-actions");
+    $("pin-chat").focus();
+  });
+});
+$("pin-chat").addEventListener("click", () => {
+  const chat = selectedSavedChat();
+  if (chat && updateSavedChat({ pinned: !chat.pinned })) {
+    chatTools.close();
+    $("history-status").textContent = chat.pinned ? "Chat unpinned." : "Chat pinned.";
+  }
+});
+$("rename-chat").addEventListener("click", () => {
+  showChatTool("chat-rename-form");
+  const field = $("chat-name");
+  field.value = selectedSavedChat()?.title || "";
+  field.focus();
+  field.select();
+});
+$("chat-rename-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const title = $("chat-name").value.trim();
+  if (!title) {
+    $("chat-tools-status").textContent = "Enter a chat title.";
+    return;
+  }
+  if (updateSavedChat({ title })) chatTools.close();
+});
+$("share-chat").addEventListener("click", () => {
+  const chat = selectedSavedChat();
+  if (!chat) return;
+  showChatTool("chat-share-panel");
+  $("chat-share-text").value = transcriptText(chat);
+  $("share-native").hidden = typeof navigator.share !== "function";
+  $("copy-chat").focus();
+});
+$("copy-chat").addEventListener("click", async () => {
+  const text = $("chat-share-text");
+  try {
+    await navigator.clipboard.writeText(text.value);
+    $("chat-tools-status").textContent = "Transcript copied.";
+  } catch {
+    text.focus();
+    text.select();
+    $("chat-tools-status").textContent = "Use your browser’s Copy command to copy the selected transcript.";
+  }
+});
+$("share-native").addEventListener("click", async () => {
+  try {
+    await navigator.share({ title: selectedSavedChat()?.title || "Sunoida chat", text: $("chat-share-text").value });
+  } catch (error) {
+    if (error.name !== "AbortError") $("chat-tools-status").textContent = "Device sharing is unavailable. You can copy the transcript instead.";
+  }
+});
+$("download-saved-chat").addEventListener("click", () => {
+  const chat = selectedSavedChat();
+  if (chat) downloadTranscript(chat);
+});
+$("delete-chat").addEventListener("click", () => {
+  showChatTool("chat-delete-panel");
+  $("chat-delete-panel").querySelector(".chat-tool-back").focus();
+});
+$("confirm-delete-chat").addEventListener("click", deleteSavedChat);
 $("close-preview").addEventListener("click", () => dialog.close());
 dialog.addEventListener("click", (event) => {
   const box = dialog.getBoundingClientRect();
@@ -671,7 +865,9 @@ window.addEventListener("resize", syncNavigation);
 window.addEventListener("storage", (event) => {
   if (event.key === HISTORY_STORAGE_KEY || event.key === null) {
     state.history = loadHistory();
-    showHistory();
+    if (state.history.deleted.includes(state.toolChatId) && chatTools.open) chatTools.close();
+    if (state.history.deleted.includes(state.chatId)) activateChat(blankConversation(), false);
+    else showHistory();
   }
 });
 syncNavigation();
