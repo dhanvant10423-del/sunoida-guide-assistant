@@ -57,7 +57,7 @@ Conversation limits bound local memory use. Expired conversations are removed on
 the next request. At capacity, the oldest inactive conversation is evicted; active
 requests are not evicted. History is held in the backend process and is not written
 to Chroma or to disk. Use a single worker. Restarting the backend, switching guide
-selection or choosing New conversation starts fresh context. A reload in the same
-tab restores the visible transcript and can continue while the session is still
-active in the backend.
+selection or choosing New chat starts fresh context. The browser saves transcripts
+and guide selections in its chat history. Reopening a chat can reuse its answer
+context while its backend session is still active.
 The API returns `409` when the same conversation already has a request in progress.

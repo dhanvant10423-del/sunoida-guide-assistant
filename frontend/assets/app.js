@@ -11,24 +11,59 @@ function newConversationId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 const CHAT_STORAGE_KEY = "sunoida.current-chat.v1";
+const HISTORY_STORAGE_KEY = "sunoida.chat-history.v1";
+
+function blankConversation() {
+  const id = newConversationId();
+  return { chatId: id, sessionId: id, selected: null, title: "", messages: [] };
+}
 
 function loadConversation() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(CHAT_STORAGE_KEY));
     if (saved && /^[0-9a-f-]{36}$/i.test(saved.sessionId) && Array.isArray(saved.messages)) {
-      return { sessionId: saved.sessionId, selected: saved.selected || null, messages: saved.messages };
+      return {
+        chatId: saved.chatId || saved.sessionId,
+        sessionId: saved.sessionId,
+        selected: saved.selected || null,
+        title: saved.title || saved.messages.find((message) => message.role === "You")?.text || "",
+        messages: saved.messages,
+      };
     }
   } catch { /* A storage restriction should not prevent chatting. */ }
-  return { sessionId: newConversationId(), selected: null, messages: [] };
+  return blankConversation();
 }
 
-const state = { guides: [], controller: null, sequence: 0, viewer: null, ...loadConversation() };
-
-function saveConversation() {
+function loadHistory(fallback = []) {
   try {
-    const { sessionId, selected, messages } = state;
-    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ sessionId, selected, messages: messages.slice(-40) }));
+    const saved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY));
+    return Array.isArray(saved) ? saved.filter((chat) => chat?.chatId && Array.isArray(chat.messages)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const state = { guides: [], history: loadHistory(), controller: null, sequence: 0, viewer: null, ...loadConversation() };
+
+function saveConversation(archive = true) {
+  const { chatId, sessionId, selected, title, messages } = state;
+  const snapshot = { chatId, sessionId, selected, title, messages: messages.slice(-40) };
+  try {
+    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
   } catch { /* Chat can continue in the current page when storage is unavailable. */ }
+  if (archive && messages.length) {
+    state.history = [snapshot, ...loadHistory(state.history).filter((chat) => chat.chatId !== chatId)].slice(0, 30);
+    // On a full browser store, save the most recent conversations first.
+    for (let count = state.history.length; count > 0; count--) {
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(0, count)));
+        break;
+      } catch (error) {
+        if (error.name !== "QuotaExceededError") break;
+      }
+    }
+  }
+  showHistory();
 }
 const form = $("chat-form");
 const input = $("message");
@@ -36,11 +71,8 @@ const send = $("send");
 const log = $("messages");
 const status = $("status");
 const dialog = $("page-dialog");
-const layoutBadge = document.querySelector(".version-pill");
-if (layoutBadge) {
-  layoutBadge.textContent = "LOCAL · CHAT MEMORY";
-  layoutBadge.title = "LangChain remembers recent messages in this conversation. Screenshots come from the guides.";
-}
+const guideSelect = $("guide-select");
+const historyList = $("chat-history");
 
 function element(tag, className = "", text) {
   const node = document.createElement(tag);
@@ -86,6 +118,8 @@ function updateComposer() {
   send.disabled = !state.controller && !input.value.trim();
   send.replaceChildren(icon(state.controller ? "stop" : "arrow"));
   send.setAttribute("aria-label", state.controller ? "Stop waiting for this answer" : "Send question");
+  $("workspace").classList.toggle("is-empty", !state.messages.length);
+  guideSelect.disabled = Boolean(state.controller) || !state.guides.some((guide) => guide.available);
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
 }
@@ -100,7 +134,8 @@ function setDrawer(open) {
   $("sidebar").inert = window.innerWidth <= 700 && !open;
   $("drawer-backdrop").hidden = !open;
   $("menu-toggle").setAttribute("aria-expanded", String(open));
-  if (!open) $("menu-toggle").focus({ preventScroll: true });
+  if (open) $("close-history").focus({ preventScroll: true });
+  else $("menu-toggle").focus({ preventScroll: true });
 }
 
 function syncNavigation() {
@@ -113,85 +148,100 @@ function syncNavigation() {
   }
 }
 
-function setScope(id) {
-  if (state.selected !== id) {
-    state.sessionId = newConversationId();
-    if (state.controller) {
-      state.sequence++;
-      state.controller.abort();
-      state.controller = null;
-      updateComposer();
-    }
-    status.textContent = "Guide selection changed. Conversation memory starts fresh for this selection.";
-  }
-  state.selected = id;
-  saveConversation();
-  const guide = state.guides.find((item) => item.id === id);
-  $("scope-label").textContent = guide ? guide.title : "All product guides";
-  $("clear-scope").hidden = !guide;
-  $("all-guides").classList.toggle("active", !guide);
-  $("all-guides").setAttribute("aria-pressed", String(!guide));
-  document.querySelectorAll(".guide-row").forEach((row) => {
-    const selected = row.dataset.id === id;
-    row.classList.toggle("active", selected);
-    row.querySelector(".guide-select").setAttribute("aria-pressed", String(selected));
-  });
-  input.placeholder = guide ? `Ask about ${guide.title}…` : "Ask anything about your Sunoida guides…";
-  if (window.innerWidth <= 700) setDrawer(false);
+function updateGuidePicker() {
+  const guide = state.guides.find((item) => item.id === state.selected && item.available);
+  guideSelect.value = guide?.id || "";
+  $("open-guide").hidden = !guide;
+  input.placeholder = guide ? "Ask about " + guide.title + "…" : "Ask anything about your Sunoida guides…";
 }
 
-function showLibrary() {
-  const list = $("guide-list");
-  list.replaceChildren();
-  $("guide-count").textContent = state.guides.length;
-  if (!state.guides.length) {
-    list.append(element("p", "library-loading", "Add your PDFs to backend/docs, then refresh this page."));
+function loadGuidePicker(guides) {
+  state.guides = guides;
+  const allGuides = element("option", "", "All product guides");
+  allGuides.value = "";
+  guideSelect.replaceChildren(allGuides);
+  for (const guide of guides) {
+    const option = element("option", "", guide.title + (guide.available ? "" : " (unavailable)"));
+    option.value = guide.id;
+    option.disabled = !guide.available;
+    guideSelect.append(option);
+  }
+  if (state.selected && !guides.some((guide) => guide.id === state.selected && guide.available)) {
+    setScope(null);
+  }
+  updateGuidePicker();
+  guideSelect.disabled = Boolean(state.controller) || !guides.some((guide) => guide.available);
+}
+
+function setScope(id) {
+  if (id === state.selected || state.controller) return;
+  if (state.messages.length) {
+    state.sessionId = newConversationId();
+    status.textContent = "Guide changed. The next question starts with fresh context.";
+  }
+  state.selected = id;
+  updateGuidePicker();
+  saveConversation();
+}
+
+function showHistory() {
+  historyList.replaceChildren();
+  if (!state.history.length) {
+    historyList.append(element("p", "history-empty", "No previous chats yet"));
     return;
   }
-  for (const guide of state.guides) {
-    const row = element("div", "guide-row");
-    row.dataset.id = guide.id;
-    const select = element("button", "guide-select");
-    select.type = "button";
-    select.disabled = !guide.available;
-    select.setAttribute("aria-pressed", "false");
-    select.setAttribute("aria-label", `Search ${guide.title}`);
-    const name = element("span", "guide-title", guide.title.replace(/^Vision /, ""));
-    name.append(element("span", "guide-pages", guide.available ? `${guide.pages} pages` : "PDF needs attention"));
-    select.append(element("span", "guide-badge", guide.short), name);
-    select.addEventListener("click", () => setScope(state.selected === guide.id ? null : guide.id));
-    const browse = element("button", "guide-browse");
-    browse.type = "button";
-    browse.disabled = !guide.available;
-    browse.setAttribute("aria-label", `Browse ${guide.title}`);
-    browse.title = `Browse ${guide.title}`;
-    browse.append(icon("external"));
-    browse.addEventListener("click", () => openGuide(guide));
-    row.append(select, browse);
-    list.append(row);
+  for (const chat of state.history) {
+    const title = chat.title || "Untitled chat";
+    const button = element("button", "history-chat", title);
+    button.type = "button";
+    button.title = title;
+    if (chat.chatId === state.chatId) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", () => {
+      if (chat.chatId !== state.chatId) activateChat(chat);
+      else if (window.innerWidth <= 700) setDrawer(false);
+    });
+    historyList.append(button);
   }
+}
 
-  const featured = state.guides.find((item) => item.short === "API" && item.available)
-    || state.guides.find((item) => item.available);
-  if (featured) {
-    const page = featured.short === "API" ? Math.min(5, featured.pages) : 1;
-    $("feature-title").textContent = featured.title;
-    $("feature-page").textContent = `Page ${page}`;
-    $("feature-image").alt = `Screenshot from ${featured.title}`;
-    $("feature-image").addEventListener("error", () => { $("guide-feature").hidden = true; }, { once: true });
-    requestJson(guideUrl(featured.id, `pages/${page}/figures`)).then((data) => {
-      const figure = data.figures?.[0];
-      if (!figure) return;
-      $("feature-image").src = localSourceUrl(figure.image_url);
-      $("feature-preview").onclick = () => openSource({ document_id: featured.id, title: featured.title,
-        page, page_count: featured.pages, figure_id: figure.figure_id, preview_url: figure.image_url });
-      $("guide-feature").hidden = false;
-    }).catch(() => { $("guide-feature").hidden = true; });
+function renderConversation() {
+  log.replaceChildren();
+  for (const message of state.messages) {
+    if (message.role === "You") makeUserMessage(message.text);
+    else if (message.data) makeAssistantMessage(message.data);
   }
+  $("export-chat").disabled = !state.messages.length;
+  updateComposer();
+  scrollToLatest();
+}
+
+function activateChat(chat) {
+  if (state.controller) {
+    state.sequence++;
+    state.controller.abort();
+    state.controller = null;
+    // A suspended server request can complete after leaving the chat.
+    state.sessionId = newConversationId();
+    saveConversation();
+  }
+  const { chatId, sessionId, selected, title, messages } = chat;
+  Object.assign(state, { chatId, sessionId, selected, title, messages: [...messages] });
+  if (state.guides.length && selected && !state.guides.some((guide) => guide.id === selected && guide.available)) {
+    state.selected = null;
+    state.sessionId = newConversationId();
+    saveConversation();
+  } else {
+    saveConversation(false);
+  }
+  input.value = "";
+  status.textContent = "";
+  updateGuidePicker();
+  renderConversation();
+  if (window.innerWidth <= 700) setDrawer(false);
+  input.focus({ preventScroll: true });
 }
 
 function makeUserMessage(text) {
-  $("welcome").hidden = true;
   const article = element("article", "message message-user");
   article.append(element("div", "user-content", text));
   log.append(article);
@@ -486,9 +536,11 @@ async function submitQuestion(question) {
   state.controller = controller;
   status.textContent = "";
   input.value = "";
-  updateComposer();
   makeUserMessage(message);
   state.messages.push({ role: "You", text: message });
+  state.title ||= message.replace(/\s+/g, " ").slice(0, 120);
+  saveConversation();
+  updateComposer();
   $("export-chat").disabled = false;
   const pending = element("div", "pending");
   const dots = element("span", "pending-dots");
@@ -584,34 +636,18 @@ input.addEventListener("keydown", (event) => {
     if (!state.controller) submitQuestion(input.value);
   }
 });
-document.querySelectorAll(".starter").forEach((button) => button.addEventListener("click", () => {
-  setScope(null);
-  submitQuestion(button.dataset.question);
-}));
-$("all-guides").addEventListener("click", () => setScope(null));
-$("clear-scope").addEventListener("click", () => setScope(null));
+guideSelect.addEventListener("change", () => setScope(guideSelect.value || null));
+$("open-guide").addEventListener("click", () => {
+  const guide = state.guides.find((item) => item.id === state.selected && item.available);
+  if (guide) openGuide(guide);
+});
 $("menu-toggle").addEventListener("click", () => setDrawer(!$("sidebar").classList.contains("open")));
+$("close-history").addEventListener("click", () => setDrawer(false));
 $("drawer-backdrop").addEventListener("click", () => setDrawer(false));
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && $("sidebar").classList.contains("open")) setDrawer(false);
 });
-$("new-chat").addEventListener("click", () => {
-  state.sequence++;
-  if (state.controller) state.controller.abort();
-  state.controller = null;
-  state.messages = [];
-  state.sessionId = newConversationId();
-  saveConversation();
-  log.replaceChildren();
-  $("welcome").hidden = false;
-  $("export-chat").disabled = true;
-  input.value = "";
-  status.textContent = "";
-  updateComposer();
-  if (window.innerWidth <= 700) setDrawer(false);
-  input.focus();
-  $("conversation-scroll").scrollTop = 0;
-});
+$("new-chat").addEventListener("click", () => activateChat(blankConversation()));
 $("export-chat").addEventListener("click", () => {
   const text = "Sunoida Guide Assistant\n\n" + state.messages.map((message) => `${message.role}\n${message.text}`).join("\n\n---\n\n");
   const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
@@ -632,21 +668,17 @@ $("previous-page").addEventListener("click", () => { if (state.viewer.page > 1) 
 $("next-page").addEventListener("click", () => { if (state.viewer.page < state.viewer.count) { state.viewer.page++; displayPage(); } });
 
 window.addEventListener("resize", syncNavigation);
+window.addEventListener("storage", (event) => {
+  if (event.key === HISTORY_STORAGE_KEY || event.key === null) {
+    state.history = loadHistory();
+    showHistory();
+  }
+});
 syncNavigation();
-updateComposer();
-for (const message of state.messages) {
-  if (message.role === "You") makeUserMessage(message.text);
-  else if (message.data) makeAssistantMessage(message.data);
-}
-if (state.messages.length) {
-  $("export-chat").disabled = false;
-  scrollToLatest();
-}
+renderConversation();
+saveConversation();
 requestJson("/api/guides").then((data) => {
-  state.guides = data.guides || [];
-  showLibrary();
-  if (state.selected) setScope(state.guides.some((guide) => guide.id === state.selected) ? state.selected : null);
+  loadGuidePicker(data.guides || []);
 }).catch((error) => {
-  $("guide-list").replaceChildren(element("p", "library-loading", "Could not load guides. Check that the updated backend is running."));
   status.textContent = error.message;
 });

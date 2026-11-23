@@ -114,11 +114,15 @@ while retrieving and checking fresh guide evidence. No extra model call is used
 to rewrite the question. LangChain's `ChatPromptTemplate`, `MessagesPlaceholder`,
 message objects and `ChatOllama` handle the model conversation.
 
-Click **New conversation** to start fresh. Changing the guide selection also
-starts fresh memory. Each browser tab has its own random conversation ID.
-Refreshing the same tab restores up to 40 recent messages and resumes the
-conversation while its backend memory is still available. Stopped or failed
-requests rotate the ID so an unseen answer cannot affect your next question.
+Click **New chat** to open a blank conversation. Use the guide picker in the
+message box to search one guide or all guides. Changing the guide starts fresh
+answer context, and the transcript stays visible.
+
+The **Chats** sidebar saves up to 30 recent conversations with up to 40 messages
+each in the current browser. Open one to restore its messages and selected guide.
+The server's answer context is available while its session is active. Stopped
+or failed requests use a new session so unseen answers cannot affect the next
+question.
 
 Ask "Show me step 2" to revisit that numbered step from the last procedure. From
 there, ask "What is the next step?" to continue through the same procedure.

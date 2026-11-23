@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#c60067">
   <title>Sunoida · Guide Assistant</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css?v=figures-4">
-  <script src="/assets/inline-pages.js?v=figures-4" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=chat-history">
+  <script src="/assets/inline-pages.js?v=chat-history" defer></script>
 </head>
 <body>
   <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -27,53 +27,40 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
 
-  <button id="drawer-backdrop" class="drawer-backdrop" aria-label="Close guide menu" hidden></button>
-  <aside id="sidebar" class="sidebar" aria-label="Guide navigation">
-    <a class="brand" href="/" aria-label="Sunoida Guide Assistant home">
-      <span class="brand-mark">s<span>·</span></span>
-      <span><strong>sunoida<span class="brand-dot">.</span></strong><small>GUIDE ASSISTANT</small></span>
-    </a>
-    <button id="new-chat" class="new-chat"><svg class="icon"><use href="#i-plus"/></svg> New conversation <span class="new-shortcut">↗</span></button>
-    <div class="library-heading"><span>YOUR LIBRARY</span><span id="guide-count" class="count">—</span></div>
-    <button id="all-guides" class="all-guides active" aria-pressed="true"><svg class="icon"><use href="#i-book"/></svg><span>All product guides</span><span class="selection-dot"></span></button>
-    <div id="guide-list" class="guide-list"><p class="library-loading">Loading your guides…</p></div>
-    <div class="sidebar-bottom">
-      <div class="visual-note"><span class="note-icon"><svg class="icon"><use href="#i-image"/></svg></span><strong>See the original</strong><p>Answers include screenshots from your guides. Open an image for a closer look.</p></div>
-      <div class="local-note"><span class="status-dot"></span><span>Runs on your PC</span><svg class="icon"><use href="#i-shield"/></svg></div>
-      <p class="sidebar-footnote">Ollama · LangChain · ChromaDB</p>
+  <button id="drawer-backdrop" class="drawer-backdrop" aria-label="Close chat history" hidden></button>
+  <aside id="sidebar" class="sidebar" aria-labelledby="history-heading">
+    <div class="history-heading">
+      <h2 id="history-heading">Chats</h2>
+      <button id="close-history" class="icon-button mobile-menu" type="button" aria-label="Close chat history"><svg class="icon"><use href="#i-close"/></svg></button>
     </div>
+    <button id="new-chat" class="new-chat" type="button"><svg class="icon"><use href="#i-plus"/></svg> New chat</button>
+    <nav id="chat-history" class="chat-history" aria-label="Previous chats"></nav>
   </aside>
 
-  <main class="workspace">
+  <main id="workspace" class="workspace is-empty">
     <header class="topbar">
-      <div class="topbar-title"><button id="menu-toggle" class="icon-button mobile-menu" aria-label="Open guide menu" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><span class="breadcrumb">Workspace <span>/</span></span><strong>Guide Assistant</strong><span class="version-pill">LOCAL</span></div>
-      <button id="export-chat" class="toolbar-button" aria-label="Export chat" disabled><svg class="icon"><use href="#i-download"/></svg><span>Export chat</span></button>
+      <div class="topbar-title"><strong>Sunoida<span class="brand-dot">.</span></strong><span>Guide Assistant</span></div>
+      <div class="toolbar-actions">
+        <button id="export-chat" class="toolbar-button" type="button" aria-label="Export chat" disabled><svg class="icon"><use href="#i-download"/></svg><span>Export chat</span></button>
+        <button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Open chat history" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
+      </div>
     </header>
 
     <div id="conversation-scroll" class="conversation-scroll">
-      <section id="welcome" class="welcome">
-        <div class="eyebrow"><span></span> YOUR SUNOIDA KNOWLEDGE, CONNECTED</div>
-        <div class="welcome-grid">
-          <div class="welcome-copy"><h1>Your guides.<br><span>Clear answers.</span></h1><p class="welcome-description">Find the right steps, understand a feature, and see relevant screenshots from your guides.</p><div class="capabilities"><span><svg class="icon"><use href="#i-check"/></svg>Product-focused answers</span><span><svg class="icon"><use href="#i-image"/></svg>Original guide screenshots</span></div></div>
-          <div id="guide-feature" class="guide-feature" hidden><div class="feature-heading"><svg class="icon"><use href="#i-book"/></svg><span>A LOOK INSIDE YOUR GUIDES</span><span class="feature-dot"></span></div><button id="feature-preview" class="feature-preview" aria-label="Open featured guide screenshot"><img id="feature-image" alt="Screenshot from a Sunoida product guide"><span class="feature-zoom"><svg class="icon"><use href="#i-external"/></svg> View screenshot</span></button><div class="feature-caption"><strong id="feature-title"></strong><span id="feature-page"></span></div></div>
-        </div>
-        <div class="starter-heading"><span>Start with a question</span><span>Or ask your own below <span aria-hidden="true">↙</span></span></div>
-        <div class="starter-grid">
-          <button class="starter" data-question="How do I configure an ETL feed in Vision ETL?"><span class="starter-tag tag-etl">ETL</span><strong>Configure an ETL feed</strong><span>Find the setup steps in the guide.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
-          <button class="starter" data-question="How do I create a Push API in Vision API Manager?"><span class="starter-tag tag-api">API</span><strong>Create a Push API</strong><span>Explore the configuration workflow.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
-          <button class="starter" data-question="What do the data quality scores mean in Vision AI Data Quality?"><span class="starter-tag tag-dq">DQ</span><strong>Understand quality scores</strong><span>Get a clear explanation with sources.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
-          <button class="starter" data-question="What can I do with dashboards in Vision Studio?"><span class="starter-tag tag-st">ST</span><strong>Explore Vision Studio</strong><span>Learn what the product guide covers.</span><svg class="icon"><use href="#i-chevron"/></svg></button>
-        </div>
-      </section>
       <section id="messages" class="messages" role="log" aria-label="Conversation" aria-live="polite"></section>
     </div>
 
     <div class="composer-area"><div class="composer-wrap">
-      <div class="scope-line"><svg class="icon"><use href="#i-book"/></svg><span>Searching:</span><strong id="scope-label">All product guides</strong><button id="clear-scope" hidden>Clear filter</button></div>
       <form id="chat-form" class="composer">
         <label class="sr-only" for="message">Ask a question about your Sunoida guides</label>
         <textarea id="message" rows="2" maxlength="2000" placeholder="Ask anything about your Sunoida guides…" required></textarea>
-        <div class="composer-bottom"><span><svg class="icon"><use href="#i-image"/></svg> Guide screenshots included when available</span><div class="composer-actions"><span id="character-count">0 / 2000</span><button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button></div></div>
+        <div class="composer-bottom">
+          <div class="guide-control">
+            <label class="guide-picker" for="guide-select"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span class="sr-only">Search guide</span><select id="guide-select" disabled><option value="">All product guides</option></select></label>
+            <button id="open-guide" class="icon-button" type="button" aria-label="Open selected guide" title="Open selected guide" hidden><svg class="icon"><use href="#i-external"/></svg></button>
+          </div>
+          <div class="composer-actions"><span id="character-count">0 / 2000</span><button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+        </div>
       </form>
       <div class="composer-footer"><p>Answers can make mistakes. Check the retrieved guide pages.</p><span>Enter to send · Shift + Enter for a new line</span></div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
