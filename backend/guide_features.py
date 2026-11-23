@@ -13,8 +13,8 @@ FEATURE_CHECK = re.compile(
 )
 MONITOR_NAMES = {"monitor", "monitoring", "data monitor", "monitor dashboard", "monitoring dashboard"}
 MONITOR_SECTIONS = {
-    "ETL": (6, "Monitor Dashboard", r"\bMonitor Dashboard (The Dashboard provides [^.]+\.)"),
-    "DQ": (92, "Data Monitor", r"\b(The Data Monitor shows [^.]+\.)"),
+    "ETL": (6, "Monitor Dashboard", r"\bMonitor Dashboard (The Dashboard (provides [^.]+\.))"),
+    "DQ": (92, "Data Monitor", r"\b(The Data Monitor (shows [^.]+\.))"),
 }
 
 
@@ -53,9 +53,8 @@ def documented_feature(feature, document):
     evidence = re.search(description, " ".join(raw.split()))
     if not evidence:
         return None
-    summary = evidence[1]
-    references = [reference_for(document, page, 1, summary)]
-    reply = f"Yes. **{document['title']}** has a **{name}**. {summary} [1]"
+    references = [reference_for(document, page, 1, evidence[1])]
+    reply = f"Yes, **{document['title']}** has a monitoring page called **{name}**. It {evidence[2]} [1]"
     if document["short"] == "DQ" and re.search(r"^SIDEBAR Monitor\s*$", raw, re.MULTILINE):
         reply += "\n\nOpen **Monitor** in the sidebar."
     if document["short"] == "ETL":

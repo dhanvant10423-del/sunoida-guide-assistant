@@ -29,7 +29,9 @@ class GuideAnswerTests(unittest.TestCase):
         ):
             result = answer_question(question, source="etl.pdf")
         search.assert_not_called()
-        self.assertIn("**Monitor Dashboard**", result["reply"])
+        self.assertTrue(result["reply"].startswith(
+            "Yes, **Vision ETL** has a monitoring page called **Monitor Dashboard**. It provides"
+        ))
         self.assertIn("**ETL Console → Dashboard**", result["reply"])
         self.assertEqual([ref["page"] for ref in result["sources"]], [6, 4])
 
@@ -42,7 +44,9 @@ class GuideAnswerTests(unittest.TestCase):
             patch("guide_features.reference_for", return_value={"page": 92, "index": 1}),
         ):
             result = answer_question("Is there a monitoring page in this app?", conversation=conversation)
-        self.assertIn("**Data Monitor**", result["reply"])
+        self.assertTrue(result["reply"].startswith(
+            "Yes, **Vision AI Data Quality** has a monitoring page called **Data Monitor**. It shows"
+        ))
         self.assertTrue(result["used_history"])
         self.assertEqual(conversation.anchor, "monitoring")
 

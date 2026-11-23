@@ -366,7 +366,8 @@ def answer_question(message: str, source=None, conversation=None):
         retrieval_question = label
         model_question = (
             f"Does {feature_document['title']} have a screen or feature for {label}? "
-            "Give its official name and a brief explanation when the excerpts confirm it."
+            f"If the guide confirms it, open with 'Yes, {feature_document['title']} has' and name the feature. "
+            "Briefly explain what it does or where to find it using the guide."
         )
     elif is_follow_up(message) and not (conversation and conversation.anchor) and not source:
         if not named_source:
