@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import ChatOllama
 from config import settings
 from conversation import is_follow_up, previous_step, resolve_follow_up
+from guide_features import documented_feature, feature_check, unconfirmed_feature
 from guide_followups import ETL_SETUP_REQUEST, offer_for
 from guide_overview import is_overview, product_overview
 from search_guides import EMBED_MODEL, MIN_SIMILARITY, GuideIndexError, question_source, search_guides
@@ -319,6 +320,7 @@ def answer_question(message: str, source=None, conversation=None):
         return prior_step
     documents = {item["filename"]: item for item in catalog().values()}
     named_source = question_source(message)
+    feature = feature_check(message)
     overview_source = named_source or source or (conversation.source if conversation else None)
     overview_document = documents.get(overview_source)
     if is_overview(message, overview_document):
@@ -340,12 +342,39 @@ def answer_question(message: str, source=None, conversation=None):
                 "sources": [], "points": [], "status": "answered",
                 "chat_title": "About the guide assistant",
             }
-    if is_follow_up(message) and not (conversation and conversation.anchor) and not source:
+    feature_document = None
+    model_question = message
+    if feature:
+        label, named = feature
+        if source and named and named != source:
+            return {"reply": "This chat uses a different guide. Start a new chat to ask about that product.",
+                    "sources": [], "points": [], "status": "clarification"}
+        prior_source = conversation.source if conversation else None
+        source_for_feature = named or source or prior_source
+        feature_document = documents.get(source_for_feature)
+        if not feature_document:
+            return {"reply": f"Which Sunoida product do you mean? Name it in your question about {label}.",
+                    "sources": [], "points": [], "status": "clarification", "used_history": False}
+        follow_up = bool(prior_source and not named and source_for_feature == prior_source)
+        verified = documented_feature(label, feature_document)
+        if verified:
+            verified["used_history"] = follow_up
+            if conversation:
+                remember_answer(conversation, message, label, verified, source_for_feature, follow_up, anchor=label)
+            return verified
+        source = source_for_feature
+        retrieval_question = label
+        model_question = (
+            f"Does {feature_document['title']} have a screen or feature for {label}? "
+            "Give its official name and a brief explanation when the excerpts confirm it."
+        )
+    elif is_follow_up(message) and not (conversation and conversation.anchor) and not source:
         if not named_source:
             return {"reply": "Which Sunoida product and feature do you mean? Please ask a complete question to start this conversation.",
                     "sources": [], "points": [], "status": "clarification", "used_history": False}
-    retrieval_question, follow_up = resolve_follow_up(message, conversation)
-    follow_up = follow_up or accepted
+    if not feature:
+        retrieval_question, follow_up = resolve_follow_up(message, conversation)
+        follow_up = follow_up or accepted
     if follow_up and not source:
         source = conversation.source
     setup_request = bool(ETL_SETUP_REQUEST.fullmatch(message))
@@ -355,6 +384,8 @@ def answer_question(message: str, source=None, conversation=None):
     matches = search_guides(retrieval_question, limit=settings.retrieval_top_k, source=source)
     matches = [match for match in matches if match.get("similarity", -1) >= MIN_SIMILARITY]
     if not matches:
+        if feature_document:
+            return unconfirmed_feature(label, feature_document, "weak_retrieval")
         return refusal("weak_retrieval")
     candidates = []
     for match in matches:
@@ -370,6 +401,8 @@ def answer_question(message: str, source=None, conversation=None):
     # approval of one section would also admit unrelated sections on that page.
     approved = set(supported_sources(retrieval_question, candidates))
     if not approved:
+        if feature_document:
+            return unconfirmed_feature(label, feature_document, "no_supporting_evidence")
         return refusal("no_supporting_evidence")
     candidates = [candidate for candidate in candidates if candidate["index"] in approved]
     procedure = etl_publish_procedure(message, candidates)
@@ -411,7 +444,7 @@ def answer_question(message: str, source=None, conversation=None):
             # procedure text can overwhelm a brief question about the latest reply.
             history = history[-2:]
         reply = answer_chain.invoke({
-            "context": context, "question": message,
+            "context": context, "question": model_question,
             "history": history,
         }).strip()
     if not reply:
@@ -420,6 +453,8 @@ def answer_question(message: str, source=None, conversation=None):
         r"\b(?:I (?:cannot|can't|could not|couldn't) find|not (?:found|available|covered|provided) in (?:the |these )?(?:guides?|excerpts?))\b",
         reply, re.IGNORECASE,
     ):
+        if feature_document:
+            return unconfirmed_feature(label, feature_document, "generation_declined")
         return refusal("generation_declined")
     guide_titles = {reference["title"] for reference in references}
     title = next(iter(guide_titles)) if len(guide_titles) == 1 else None
@@ -459,16 +494,17 @@ def answer_question(message: str, source=None, conversation=None):
         remember_answer(
             conversation, message, retrieval_question, result,
             next(iter(filenames)) if len(filenames) == 1 else source, follow_up, suggestion,
+            anchor=label if feature else None,
         )
     return result
 
 
-def remember_answer(conversation, question, query, result, source, follow_up=False, suggestion=None):
+def remember_answer(conversation, question, query, result, source, follow_up=False, suggestion=None, *, anchor=None):
     if not follow_up:
         conversation.reset(conversation.scope)
     conversation.remember(
         question, result.get("original_reply", result["reply"]),
-        conversation.anchor if follow_up else question, source,
+        anchor or (conversation.anchor if follow_up else question), source,
     )
     conversation.latest_query = query
     conversation.latest_answer = result

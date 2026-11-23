@@ -9,10 +9,64 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from ai_client import answer_question, ensure_procedure_lead
 from conversation import Conversation, title_for
+from guide_features import feature_check
 from point_images import guide_figure_pages
 
 
 class GuideAnswerTests(unittest.TestCase):
+    def test_monitor_question_with_repeated_word_uses_selected_guide(self):
+        document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
+        pages = {
+            6: "Monitor Dashboard\nThe Dashboard provides an overview of ETL engines.",
+            4: "ETL Console\nThe console has two primary sections: Dashboard and Operations.",
+        }
+        question = "does this app have have a monitoring page ?"
+        with (
+            patch("ai_client.catalog", return_value={"etl": document}),
+            patch("guide_features.read_page_text", side_effect=lambda _, page: pages[page]),
+            patch("guide_features.reference_for", side_effect=lambda _, page, index, *args: {"page": page, "index": index}),
+            patch("ai_client.search_guides") as search,
+        ):
+            result = answer_question(question, source="etl.pdf")
+        search.assert_not_called()
+        self.assertIn("**Monitor Dashboard**", result["reply"])
+        self.assertIn("**ETL Console → Dashboard**", result["reply"])
+        self.assertEqual([ref["page"] for ref in result["sources"]], [6, 4])
+
+    def test_monitor_question_uses_discussed_guide_and_starts_a_new_topic(self):
+        document = {"id": "dq", "filename": "dq.pdf", "title": "Vision AI Data Quality", "short": "DQ"}
+        conversation = Conversation(source="dq.pdf", anchor="What is the trust score?")
+        with (
+            patch("ai_client.catalog", return_value={"dq": document}),
+            patch("guide_features.read_page_text", return_value="The Data Monitor shows table trends.\nSIDEBAR Monitor\n"),
+            patch("guide_features.reference_for", return_value={"page": 92, "index": 1}),
+        ):
+            result = answer_question("Is there a monitoring page in this app?", conversation=conversation)
+        self.assertIn("**Data Monitor**", result["reply"])
+        self.assertTrue(result["used_history"])
+        self.assertEqual(conversation.anchor, "monitoring")
+
+    def test_feature_presence_requires_a_product_and_keeps_the_feature_topic(self):
+        self.assertEqual(feature_check("Does this app have a crypto monitoring page?"), ("crypto monitoring", None))
+        with patch("ai_client.catalog", return_value={}):
+            result = answer_question("Does this app have a monitoring page?")
+        self.assertEqual(result["status"], "clarification")
+        self.assertIn("Which Sunoida product", result["reply"])
+
+    def test_other_screen_presence_checks_use_feature_terms_in_selected_guide(self):
+        document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
+        conversation = Conversation(source="etl.pdf", anchor="How do I publish a feed?")
+        with (
+            patch("ai_client.catalog", return_value={"etl": document}),
+            patch("ai_client.search_guides", return_value=[]) as search,
+        ):
+            result = answer_question("Does this app have an interstellar navigation page?", conversation=conversation)
+        self.assertEqual(search.call_args.args[0], "interstellar navigation")
+        self.assertEqual(search.call_args.kwargs["source"], "etl.pdf")
+        self.assertEqual(result["status"], "not_found")
+        self.assertIn("Vision ETL", result["reply"])
+        self.assertEqual(conversation.anchor, "How do I publish a feed?")
+
     def test_generic_overview_uses_current_guide_and_keeps_context(self):
         document = {"id": "dq", "filename": "dq.pdf", "title": "Vision AI Data Quality", "short": "DQ"}
         pages = {
