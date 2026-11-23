@@ -17,7 +17,8 @@ class GuideAnswerTests(unittest.TestCase):
     def test_monitor_question_with_repeated_word_uses_selected_guide(self):
         document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
         pages = {
-            6: "Monitor Dashboard\nThe Dashboard provides an overview of ETL engines.",
+            6: ("Monitor Dashboard\nThe Dashboard provides an overview of ETL engines.\n"
+                "Widget Menu\nThe selected widgets are saved as the default view."),
             4: "ETL Console\nThe console has two primary sections: Dashboard and Operations.",
         }
         question = "does this app have have a monitoring page ?"
@@ -33,6 +34,7 @@ class GuideAnswerTests(unittest.TestCase):
             "Yes, **Vision ETL** has a monitoring page called **Monitor Dashboard**. It provides"
         ))
         self.assertIn("**ETL Console → Dashboard**", result["reply"])
+        self.assertIn("save them as your default view", result["reply"])
         self.assertEqual([ref["page"] for ref in result["sources"]], [6, 4])
 
     def test_monitor_question_uses_discussed_guide_and_starts_a_new_topic(self):
@@ -40,7 +42,13 @@ class GuideAnswerTests(unittest.TestCase):
         conversation = Conversation(source="dq.pdf", anchor="What is the trust score?")
         with (
             patch("ai_client.catalog", return_value={"dq": document}),
-            patch("guide_features.read_page_text", return_value="The Data Monitor shows table trends.\nSIDEBAR Monitor\n"),
+            patch("guide_features.read_page_text", return_value=(
+                "The Data Monitor shows table trends. It combines the results of your approved rules "
+                "(by table, by column and by version) with checks for data timeliness, volume, "
+                "schema changes and data pattern shift. Use it to identify which column or rule is responsible, "
+                "and see exactly what changed since the previous run. Tables are ranked by rule pass rate.\n"
+                "SIDEBAR Monitor\n"
+            )),
             patch("guide_features.reference_for", return_value={"page": 92, "index": 1}),
         ):
             result = answer_question("Is there a monitoring page in this app?", conversation=conversation)
@@ -48,6 +56,9 @@ class GuideAnswerTests(unittest.TestCase):
             "Yes, **Vision AI Data Quality** has a monitoring page called **Data Monitor**. It shows"
         ))
         self.assertTrue(result["used_history"])
+        self.assertIn("**approved-rule results**", result["reply"])
+        self.assertIn("since the previous run", result["reply"])
+        self.assertIn("Open **Monitor** in the sidebar.", result["reply"])
         self.assertEqual(conversation.anchor, "monitoring")
 
     def test_feature_presence_requires_a_product_and_keeps_the_feature_topic(self):

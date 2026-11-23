@@ -25,6 +25,9 @@ For a procedure, name the task in a short opening sentence before the numbered
 steps. For example, "Here are the steps to set up a data source connector."
 Keep the first action in step 1. For other questions, give the definition,
 outcome, or menu location directly. Preserve exact UI labels.
+Even for a simple question, follow the direct answer with useful details from the
+guide. Explain what the feature shows or does and when to use it. Include a
+practical example or a documented navigation path when it helps the user.
 Cite supporting excerpts with their provided numbers, for example [1].
 Put citations beside the paragraph or step they support. Separate distinct points
 into paragraphs. Cite a guide page only where useful; do not repeat the same citation
@@ -367,7 +370,8 @@ def answer_question(message: str, source=None, conversation=None):
         model_question = (
             f"Does {feature_document['title']} have a screen or feature for {label}? "
             f"If the guide confirms it, open with 'Yes, {feature_document['title']} has' and name the feature. "
-            "Briefly explain what it does or where to find it using the guide."
+            "Then explain what it does, when it is useful, and where to find it if documented. "
+            "Include a practical example when the excerpts support one."
         )
     elif is_follow_up(message) and not (conversation and conversation.anchor) and not source:
         if not named_source:

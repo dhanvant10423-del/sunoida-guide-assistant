@@ -50,21 +50,49 @@ def documented_feature(feature, document):
         return None
     page, name, description = section
     raw = read_page_text(document, page)
-    evidence = re.search(description, " ".join(raw.split()))
+    text = " ".join(raw.split())
+    evidence = re.search(description, text)
     if not evidence:
         return None
     references = [reference_for(document, page, 1, evidence[1])]
-    reply = f"Yes, **{document['title']}** has a monitoring page called **{name}**. It {evidence[2]} [1]"
+    paragraphs = [f"Yes, **{document['title']}** has a monitoring page called **{name}**. It {evidence[2]}"]
+    if document["short"] == "DQ":
+        if re.search(
+            r"results of your approved rules \(by table, by column and by version\).*?"
+            r"data timeliness, volume, schema changes and data pattern shift",
+            text, re.IGNORECASE,
+        ):
+            paragraphs.append(
+                "You can review **approved-rule results** by table, column, or version. "
+                "The page also tracks whether data arrives on time and whether its volume, "
+                "schema, or patterns have changed."
+            )
+        if "rule pass rate" in text and re.search(
+            r"which column or rule is responsible, and see exactly what changed since the previous run",
+            text, re.IGNORECASE,
+        ):
+            paragraphs.append(
+                "For example, if a table’s rule pass rate drops, you can check which column "
+                "or rule needs attention and see what changed since the previous run."
+            )
+    if document["short"] == "ETL" and re.search(
+        r"Widget Menu.*selected widgets are saved as the default view", text, re.IGNORECASE,
+    ):
+        paragraphs.append(
+            "If you regularly check the same metrics, choose the widgets you need and save them "
+            "as your default view. The ETL Console will display those widgets when it opens."
+        )
+    paragraphs[-1] += " [1]"
     if document["short"] == "DQ" and re.search(r"^SIDEBAR Monitor\s*$", raw, re.MULTILINE):
-        reply += "\n\nOpen **Monitor** in the sidebar."
+        paragraphs.append("Open **Monitor** in the sidebar.")
     if document["short"] == "ETL":
         console_page = 4
         console = " ".join(read_page_text(document, console_page).split())
         if re.search(r"\bETL Console\b.*\bprimary sections\b.{0,55}\bDashboard\b", console):
             references.append(reference_for(document, console_page, 2))
-            reply += "\n\nOpen **ETL Console → Dashboard**. [2]"
+            paragraphs.append("Open **ETL Console → Dashboard**. [2]")
     return {
-        "reply": reply, "sources": references, "points": [], "status": "answered",
+        "reply": "\n\n".join(paragraphs), "sources": references, "points": [], "status": "answered",
         "chat_title": f"{name} in {document['title']}",
     }
 
