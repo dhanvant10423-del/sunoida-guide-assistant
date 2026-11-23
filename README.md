@@ -91,7 +91,7 @@ root, even when you start from another folder.
 
 ```dotenv
 SUNOIDA_CHAT_MODEL=qwen2.5:0.5b
-SUNOIDA_VISION_MODEL=qwen3-vl:2b
+SUNOIDA_VISION_MODEL=qwen3-vl:2b-instruct
 SUNOIDA_EMBED_MODEL=nomic-embed-text:v1.5
 SUNOIDA_PORT=8000
 SUNOIDA_MIN_SIMILARITY=0.67
@@ -137,7 +137,7 @@ there, ask "What is the next step?" to continue through the same procedure.
 Install the Ollama vision model once to ask questions about attachments.
 
 ```bat
-ollama pull qwen3-vl:2b
+ollama pull qwen3-vl:2b-instruct
 ```
 
 Use **+** beside the message box, or paste a screenshot into it. Add a question

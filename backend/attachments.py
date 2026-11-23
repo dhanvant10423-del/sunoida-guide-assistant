@@ -184,7 +184,7 @@ def answer_attachment_question(question, source, conversation, files):
     model = settings.vision_model
     try:
         response = ollama.chat(
-            model=model, messages=[*messages, turn], think=False,
+            model=model, messages=[*messages, turn],
             options={"num_ctx": max(settings.context_window, 8192), "num_predict": settings.max_response_tokens,
                      "temperature": settings.temperature},
         )

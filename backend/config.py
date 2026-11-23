@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_timeout: float = Field(default=180, ge=1, le=900)
     chat_model: str = Field(default="qwen2.5:0.5b", min_length=1)
-    vision_model: str = Field(default="qwen3-vl:2b", min_length=1)
+    vision_model: str = Field(default="qwen3-vl:2b-instruct", min_length=1)
     embed_model: str = Field(default="nomic-embed-text:v1.5", min_length=1)
     temperature: float = Field(default=0.1, ge=0, le=1)
     context_window: int = Field(default=4096, ge=1024, le=32768)
