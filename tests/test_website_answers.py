@@ -51,6 +51,25 @@ class WebsiteTests(unittest.TestCase):
         fetch.assert_not_called()
         self.assertEqual(answer["status"], "out_of_scope")
 
+    def test_ssbi_without_selected_guide_reaches_website_and_has_recommendations(self):
+        home = WebsitePage()
+        page = WebsitePage()
+        page.feed(
+            "<title>Sunoida: Vision BI Modules</title>"
+            "<p>Configure and customize reports and dashboards. Self-Service BI gives "
+            "you flexibility and self-reliance in reporting and analysis.</p>"
+            "<p>Users can filter reports and create analyses. Self-service functions "
+            "help them adapt reports to their individual needs.</p>"
+        )
+        question = "how to configure SSBI reports"
+        with patch("website_answers.fetch_page", side_effect=lambda url, _: home if url.endswith(".com/") else page):
+            result = website_fallback(question)
+        self.assertEqual(result["answer_origin"], "website")
+        self.assertEqual(result["web_sources"][0]["url"], "https://sunoida.com/vision-bi/self-service-bi/")
+        self.assertIn("customize reports", result["reply"])
+        self.assertIn("does not provide", result["reply"])
+        self.assertEqual(len(related_questions(question, result)), 3)
+
     def test_unavailable_website_does_not_claim_to_have_found_information(self):
         with patch("website_answers.fetch_page", side_effect=httpx.ConnectError("unavailable")):
             answer = website_fallback("When was Sunoida founded?")

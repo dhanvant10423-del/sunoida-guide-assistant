@@ -464,9 +464,12 @@ function downloadTranscript(chat) {
 
 function renderConversation() {
   log.replaceChildren();
+  let question = "";
   for (const message of state.messages) {
-    if (message.role === "You") makeUserMessage(message.text, message.attachments);
-    else if (message.data) makeAssistantMessage(message.data);
+    if (message.role === "You") {
+      question = message.text;
+      makeUserMessage(message.text, message.attachments);
+    } else if (message.data) makeAssistantMessage(message.data, question);
   }
   $("export-chat").disabled = !state.messages.length;
   updateComposer();
@@ -686,7 +689,7 @@ function appendGuideVisuals(article, data, sources, points) {
   if (visuals.children.length) article.append(visuals);
 }
 
-function makeAssistantMessage(data) {
+function makeAssistantMessage(data, question = "") {
   const sources = Array.isArray(data.sources) ? data.sources : [];
   const article = element("article", "message message-assistant");
   const heading = element("div", "assistant-heading");
@@ -731,7 +734,20 @@ function makeAssistantMessage(data) {
     article.append(link);
   }
   const suggestion = data.suggested_follow_up;
-  const related = Array.isArray(data.related_questions) ? data.related_questions.filter((q) => typeof q === "string").slice(0, 3) : [];
+  let related = Array.isArray(data.related_questions) ? data.related_questions.filter((q) => typeof q === "string").slice(0, 3) : [];
+  const ssbi = /\bssbi\b|\bself[- ]service bi\b/i.test(question);
+  if (!related.length && ssbi) {
+    related = ["What can Sunoida’s Self-Service BI do?", "Can I filter reports in Sunoida’s Self-Service BI?", "What is Vision Banking BI?"];
+  }
+  if (!related.length && !suggestion && sources[0]?.title) {
+    related = ["What is " + sources[0].title + "?", "What can " + sources[0].title + " do?"];
+  }
+  if (question && (data.status === "not_found" || (ssbi && data.status === "out_of_scope"))) {
+    const retry = element("button", "follow-up-question", "Check this question again");
+    retry.type = "button";
+    retry.addEventListener("click", () => submitQuestion(question));
+    article.append(retry);
+  }
   if (related.length) {
     const group = element("div", "related-questions");
     group.append(element("p", "", "Are you looking for any of these?"));
@@ -805,7 +821,7 @@ async function submitQuestion(question) {
     });
     if (sequence !== state.sequence) return;
     if (typeof data.reply !== "string") throw new Error("The backend response is missing its reply.");
-    answerArticle = makeAssistantMessage(data);
+    answerArticle = makeAssistantMessage(data, message);
     const references = [...(data.sources || []).map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`), ...(data.web_sources || []).map((source) => source.title + " — " + source.url)].join("\n");
     state.messages.push({ role: "Sunoida Assistant", data, text: data.reply + (references ? "\n\nRetrieved references:\n" + references : "") });
     saveConversation(true, data.chat_title);

@@ -23,7 +23,7 @@ from website_answers import related_questions, website_fallback
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
-app = FastAPI(title=settings.app_name, version="2.3.2")
+app = FastAPI(title=settings.app_name, version="2.3.3")
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
 
@@ -53,7 +53,7 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "mode": "local", "guide_count": len(public_guides()), "layout": "figures-below-answer", "answer_policy": "guide-and-attachments", "conversation": "langchain-scoped-memory"}
+    return {"status": "ok", "mode": "local", "guide_count": len(public_guides()), "layout": "figures-below-answer", "answer_policy": "guide-and-attachments", "conversation": "langchain-scoped-memory", "website_fallback": "ssbi-v2"}
 
 
 @app.get("/api/guides")

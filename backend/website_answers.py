@@ -15,6 +15,7 @@ from source_pages import catalog
 
 
 ORIGIN = "https://sunoida.com"
+SELF_SERVICE_BI = re.compile(r"\bssbi\b|\bself[- ]service\s+(?:bi|business intelligence)\b", re.IGNORECASE)
 
 
 def website_url(value):
@@ -100,6 +101,7 @@ def fetch_page(url, cache_hour):
 
 
 def lookup_terms(question):
+    question = SELF_SERVICE_BI.sub("self service business intelligence", question)
     question = re.sub(r"\b(?:founded|established|started)\b", "incorporated", question, flags=re.IGNORECASE)
     return terms(question, question=True) - {
         "company", "sunoida", "website", "com", "sunuida", "app", "page", "screen", "button",
@@ -111,7 +113,7 @@ def is_product_question(question, source, conversation):
     if re.search(r"\b(?:weather|recipe|cricket|football|bitcoin|cryptocurrency|horoscope|movie|joke|poem)\b", question, re.I):
         return False
     product = re.search(
-        r"\b(?:sunoida|vision|etl|suptech|regtech|data quality|data governance|"
+        r"\b(?:sunoida|vision|etl|ssbi|self[- ]service bi|self[- ]service business intelligence|suptech|regtech|data quality|data governance|"
         r"revenue assurance|funds transfer pricing|banking bi)\b", question, re.I,
     )
     if product:
@@ -142,6 +144,8 @@ def website_fallback(question, source=None, conversation=None):
             ORIGIN + "/our-profile/": "Sunoida company profile incorporated headquarters",
             ORIGIN + "/our-offices/": "Sunoida office contact address",
             ORIGIN + "/request-for-a-demo/": "Sunoida request demo",
+            ORIGIN + "/vision-bi/self-service-bi/": "Self service business intelligence SSBI reports dashboards",
+            ORIGIN + "/vision-bi/": "Vision banking business intelligence reporting",
         }
         ranked = sorted(links, key=lambda url: len(topics & terms(links[url] + " " + url)), reverse=True)
         pages = [(ORIGIN + "/", home)]
@@ -164,12 +168,22 @@ def website_fallback(question, source=None, conversation=None):
         if matches:
             best_url = matches[0][1]
             paragraphs = list(dict.fromkeys(item[3] for item in matches if item[1] == best_url))[:3]
+            if SELF_SERVICE_BI.search(question):
+                focused = [text for text in paragraphs if re.search(r"\bself[- ]service\b", text, re.I)]
+                if focused:
+                    paragraphs = focused
             result = {
                 "reply": "I couldn’t find this information in the user guides. Here’s what I found on Sunoida’s official website.\n\n"
                          + "\n\n".join(paragraphs),
                 "sources": [], "points": [], "status": "answered", "answer_origin": "website",
                 "web_sources": [{"title": matches[0][2] or "Sunoida official website", "url": best_url}],
             }
+            if SELF_SERVICE_BI.search(question) and re.search(r"\b(?:configure|setup|set up|how to)\b", question, re.I):
+                result["reply"] += (
+                    "\n\nThis page describes Self-Service BI’s reporting capabilities. It does not provide "
+                    "the screen-by-screen configuration procedure. Share the SSBI setup guide or a screenshot "
+                    "of the report configuration screen so I can help with the specific fields and actions."
+                )
             if conversation:
                 conversation.remember(question, result["reply"], question, source)
                 conversation.latest_query = context_question
@@ -192,6 +206,12 @@ def website_fallback(question, source=None, conversation=None):
 
 def related_questions(question, result, source=None):
     questions = []
+    if SELF_SERVICE_BI.search(question):
+        return [
+            "What can Sunoida’s Self-Service BI do?",
+            "Can I filter reports in Sunoida’s Self-Service BI?",
+            "What is Vision Banking BI?",
+        ]
     suggestion = result.get("suggested_follow_up")
     if suggestion:
         questions.append(suggestion["question"])
