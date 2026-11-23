@@ -9,11 +9,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from ai_client import answer_question, ensure_procedure_lead
 from conversation import Conversation, title_for
-from guide_features import feature_check
+from guide_features import connector_add_action, feature_check
 from point_images import guide_figure_pages
+from search_guides import question_source
 
 
 class GuideAnswerTests(unittest.TestCase):
+    def test_connector_add_question_with_short_guide_name(self):
+        document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
+        pages = {
+            12: ("Creating a New Connector\nClick Add to create a new connector.\n"
+                 "Mandatory Fields: Country, LE Book, Connector ID, Connection Name, Endpoint Type, Connector Type."),
+            17: ("Click on Save button to save the connector. Approved connectors become available for: "
+                 "Feed configuration, ETL execution."),
+        }
+        question = "Does the Add button create a new connector in ETL"
+        with (
+            patch("ai_client.catalog", return_value={"etl": document}),
+            patch("source_pages.catalog", return_value={"etl": document}),
+            patch("guide_features.read_page_text", side_effect=lambda _, page: pages[page]),
+            patch("guide_features.reference_for", side_effect=lambda _, page, index, *args: {"page": page, "index": index}),
+            patch("ai_client.search_guides") as search,
+        ):
+            self.assertEqual(question_source(question), "etl.pdf")
+            self.assertIsNone(question_source("What does loading mean in ETL processing?"))
+            result = answer_question(question)
+            locked = answer_question(question, source="dq.pdf")
+        search.assert_not_called()
+        self.assertTrue(result["reply"].startswith("Yes, **Add** starts a new connector"))
+        self.assertIn("click **Save** to store the connector", result["reply"])
+        self.assertIn("After approval", result["reply"])
+        self.assertEqual([ref["page"] for ref in result["sources"]], [12, 17])
+        self.assertEqual(locked["status"], "clarification")
+
+    def test_connector_add_variants_require_connector_context(self):
+        self.assertEqual(connector_add_action("DoEs clicking the “Add” icon create a new source connector?"), "create")
+        self.assertEqual(connector_add_action("Can I use Add to create a connector in Vision ETL?"), "create")
+        self.assertEqual(connector_add_action("What does Add do in ETL Connector Configuration?"), "describe")
+        self.assertEqual(connector_add_action("Does the Add button save a new connector?"), "save")
+        self.assertIsNone(connector_add_action("Does Add create a new connector query in ETL?"))
+        self.assertIsNone(connector_add_action("What does the Add button do in ETL?"))
+
     def test_monitor_question_with_repeated_word_uses_selected_guide(self):
         document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
         pages = {

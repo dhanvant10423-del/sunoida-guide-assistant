@@ -36,7 +36,11 @@ def cosine_similarity(left, right):
 def question_source(question):
     from source_pages import catalog
     patterns = {
-        "ETL": r"\bvision\s*etl\b", "ST": r"\bvision\s*studio\b",
+        "ETL": (
+            r"\bvision\s*etl\b|\betl connector config(?:uration)?\b|"
+            r"(?:^|\b(?:in|within)\s+)(?:the\s+)?etl(?:\s+(?:app(?:lication)?|guide))?\s*[?.!]*$"
+        ),
+        "ST": r"\bvision\s*studio\b",
         "BI": r"\bvision\s*bi\b", "API": r"\b(?:vision\s*)?api\s*manager\b",
         "DQ": r"\b(?:vision\s*)?(?:ai\s*)?data\s*quality\b",
         "TAX": r"\b(?:vision\s*)?tax\s*assurance\b",

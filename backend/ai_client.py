@@ -10,7 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import ChatOllama
 from config import settings
 from conversation import is_follow_up, previous_step, resolve_follow_up
-from guide_features import documented_feature, feature_check, unconfirmed_feature
+from guide_features import connector_add_action, connector_add_answer, documented_feature, feature_check, unconfirmed_feature
 from guide_followups import ETL_SETUP_REQUEST, offer_for
 from guide_overview import is_overview, product_overview
 from search_guides import EMBED_MODEL, MIN_SIMILARITY, GuideIndexError, question_source, search_guides
@@ -323,8 +323,27 @@ def answer_question(message: str, source=None, conversation=None):
         return prior_step
     documents = {item["filename"]: item for item in catalog().values()}
     named_source = question_source(message)
+    prior_source = conversation.source if conversation else None
+    current_source = named_source or source or prior_source
+    control_action = connector_add_action(message)
+    if control_action:
+        if source and named_source and named_source != source:
+            return {"reply": "This chat uses a different guide. Start a new chat to ask about that product.",
+                    "sources": [], "points": [], "status": "clarification"}
+        document = documents.get(current_source)
+        if not document:
+            return {"reply": "Which guide or screen do you mean? The Add button can do different things on different screens.",
+                    "sources": [], "points": [], "status": "clarification"}
+        control_answer = connector_add_answer(control_action, document)
+        if control_answer:
+            follows_product = bool(prior_source and not named_source and current_source == prior_source)
+            control_answer["used_history"] = follows_product
+            if conversation:
+                anchor = "Add a new connector in Vision ETL"
+                remember_answer(conversation, message, anchor, control_answer, current_source, follows_product, anchor=anchor)
+            return control_answer
     feature = feature_check(message)
-    overview_source = named_source or source or (conversation.source if conversation else None)
+    overview_source = current_source
     overview_document = documents.get(overview_source)
     if is_overview(message, overview_document):
         if source and named_source and source != named_source:
@@ -352,7 +371,6 @@ def answer_question(message: str, source=None, conversation=None):
         if source and named and named != source:
             return {"reply": "This chat uses a different guide. Start a new chat to ask about that product.",
                     "sources": [], "points": [], "status": "clarification"}
-        prior_source = conversation.source if conversation else None
         source_for_feature = named or source or prior_source
         feature_document = documents.get(source_for_feature)
         if not feature_document:

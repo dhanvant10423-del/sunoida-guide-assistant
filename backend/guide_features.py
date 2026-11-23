@@ -1,4 +1,4 @@
-"""Resolve feature-availability questions to documented screens."""
+"""Answer common questions about screens and controls using guide evidence."""
 
 import re
 
@@ -16,6 +16,73 @@ MONITOR_SECTIONS = {
     "ETL": (6, "Monitor Dashboard", r"\bMonitor Dashboard (The Dashboard (provides [^.]+\.))"),
     "DQ": (92, "Data Monitor", r"\b(The Data Monitor (shows [^.]+\.))"),
 }
+ADD_CONTROL = r"""(?:(?:clicking|pressing) )?(?:the )?["'“”]?add["'“”]?(?: (?:button|icon))?"""
+CONNECTOR_LOCATION = re.compile(
+    r"\s+(?:in|within|on|from)\s+(?:the\s+)?(?:vision\s+)?etl"
+    r"(?P<screen>\s+connector\s+config(?:uration)?(?:\s+(?:screen|page|module))?)?"
+    r"(?:\s+app(?:lication)?)?$",
+    re.IGNORECASE,
+)
+
+
+def connector_add_action(question):
+    """Recognize questions about Add when a connector or its screen is named."""
+    normal = " ".join(question.strip().rstrip(" ?!.").split())
+    location = CONNECTOR_LOCATION.search(normal)
+    request = normal[:location.start()] if location else normal
+    match = re.fullmatch(
+        rf"(?:(?:does|will|can) {ADD_CONTROL}|can i use {ADD_CONTROL} to) (create|add|start creating|save) "
+        r"(?:an? |the )?(?:new )?(?:(?:data source|source|target|destination) )?connector",
+        request, re.IGNORECASE,
+    )
+    if match:
+        return match[1].casefold()
+    if location and location["screen"] and re.fullmatch(rf"what does {ADD_CONTROL} do", request, re.IGNORECASE):
+        return "describe"
+    return None
+
+
+def connector_add_answer(action, document):
+    if document["short"] != "ETL":
+        return None
+    page = 12
+    setup = " ".join(read_page_text(document, page).split())
+    starts_setup = re.search(r"\bClick Add to create a new connector\.", setup, re.IGNORECASE)
+    if not starts_setup:
+        return None
+    save_page = 17
+    completion = " ".join(read_page_text(document, save_page).split())
+    saves_connector = re.search(r"\bClick on Save button to save the connector\.", completion, re.IGNORECASE)
+    if action == "save" and not saves_connector:
+        return None
+    references = [reference_for(document, page, 1, starts_setup[0])]
+    lead = "**Add** starts a new connector in **ETL Connector Configuration**."
+    if action in {"create", "add", "start creating"}:
+        lead = f"Yes, {lead}"
+    if action == "save":
+        lead = "**Add** opens the setup form in **ETL Connector Configuration**."
+    paragraphs = [lead]
+    if re.search(
+        r"\bMandatory Fields\b.*\bCountry\b.*\bLE Book\b.*\bConnector ID\b.*"
+        r"\bConnection Name\b.*\bEndpoint Type\b.*\bConnector Type\b",
+        setup,
+    ):
+        paragraphs.append(
+            "Fill in the **General** section with the country, LE Book, a unique Connector ID, "
+            "and a connection name. Then choose the endpoint and connector types and complete the configuration. [1]"
+        )
+    else:
+        paragraphs[-1] += " [1]"
+    if saves_connector:
+        references.append(reference_for(document, save_page, 2, saves_connector[0]))
+        finish = "When you finish the configuration, click **Save** to store the connector."
+        if re.search(r"Approved connectors become available for:.*Feed configuration.*ETL execution", completion):
+            finish += " After approval, you can use it in feed configuration and ETL execution."
+        paragraphs.append(f"{finish} [2]")
+    return {
+        "reply": "\n\n".join(paragraphs), "sources": references, "points": [], "status": "answered",
+        "chat_title": "Add a connector in Vision ETL",
+    }
 
 
 def feature_check(question):
