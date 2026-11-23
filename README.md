@@ -134,7 +134,7 @@ there, ask "What is the next step?" to continue through the same procedure.
 
 ## Asking about screenshots and files
 
-Install the Ollama vision model once to ask questions about screenshots.
+Install the Ollama vision model once to ask questions about attachments.
 
 ```bat
 ollama pull qwen3-vl:2b
