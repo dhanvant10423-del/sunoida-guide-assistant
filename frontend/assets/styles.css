@@ -32,7 +32,19 @@
   min-height: 30px;
 }
 .history-heading h2 { margin: 0; font-size: 15px; font-weight: 650; }
-.history-guide { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.history-guide {
+  min-width: 0;
+  max-width: 75%;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fcf8fc;
+  color: #6f4b67;
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+.history-guide:focus-visible { outline: 2px solid #b775ee; outline-offset: 2px; }
 .new-chat {
   display: flex;
   align-items: center;
@@ -78,6 +90,8 @@
   overflow-y: auto;
 }
 .history-empty { padding: 4px 7px; color: var(--muted); font-size: 12px; }
+.history-group + .history-group { margin-top: 10px; }
+.history-group-title { margin: 0; padding: 5px 8px; color: var(--muted); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .history-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 36px;

@@ -59,7 +59,7 @@ const activeChat = history.deleted.includes(previousChat.chatId)
   ? blankConversation()
   : history.chats.find((chat) => chat.chatId === previousChat.chatId) || previousChat;
 const state = {
-  guides: [], history, controller: null, sequence: 0, viewer: null, toolChatId: null,
+  guides: [], history, historyGuide: "", controller: null, sequence: 0, viewer: null, toolChatId: null,
   ...activeChat, messages: [...activeChat.messages], attachments: [],
 };
 
@@ -115,6 +115,7 @@ const guideSelect = $("guide-select");
 const attachmentInput = $("attachment-input");
 const addAttachmentButton = $("add-attachment");
 const historyList = $("chat-history");
+const historyGuide = $("history-guide");
 const chatTools = $("chat-tools");
 
 function element(tag, className = "", text) {
@@ -299,50 +300,86 @@ function setScope(id) {
   saveConversation();
 }
 
+function historyGuideLabels() {
+  const labels = new Map(state.guides.map((guide) => [guide.id, guide.title]));
+  for (const id of [state.historyGuide, ...state.history.chats.map((chat) => chat.selected)]) {
+    if (id && !labels.has(id)) labels.set(id, "Saved guide · " + id.slice(-6));
+  }
+  return [...labels].sort((first, second) => first[1].localeCompare(second[1]));
+}
+
+function updateHistoryGuideOptions(labels) {
+  const entries = [["", "All chats"], ...labels];
+  const oldOptions = Array.from(historyGuide.children);
+  if (oldOptions.length !== entries.length ||
+      entries.some(([id, label], index) => oldOptions[index].value !== id || oldOptions[index].textContent !== label)) {
+    historyGuide.replaceChildren(...entries.map(([id, label]) => {
+      const option = element("option", "", label);
+      option.value = id;
+      return option;
+    }));
+  }
+  historyGuide.value = state.historyGuide;
+}
+
 function showHistory() {
+  const labels = historyGuideLabels();
+  updateHistoryGuideOptions(labels);
   historyList.replaceChildren();
-  const filter = $("history-guide");
-  filter.hidden = !state.selected;
-  filter.textContent = state.guides.find((guide) => guide.id === state.selected)?.title || "Saved guide";
   const query = $("chat-search").value.trim().toLowerCase();
   const matches = state.history.chats.filter((chat) => {
-    if (state.selected && chat.selected !== state.selected) return false;
+    if (state.historyGuide && chat.selected !== state.historyGuide) return false;
     return !query || chat.title?.toLowerCase().includes(query) ||
       chat.messages.some((message) => message.text?.toLowerCase().includes(query));
   });
   if (!matches.length) {
-    const empty = state.selected ? "No chats for this guide yet" : "No previous chats yet";
+    const empty = state.historyGuide ? "No chats for this guide yet" : "No previous chats yet";
     historyList.append(element("p", "history-empty", query ? "No matching chats" : empty));
     return;
   }
-  const ordered = [...matches].sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned)));
-  for (const chat of ordered) {
-    const title = chat.title || "Untitled chat";
-    const row = element("div", "history-row");
-    const button = element("button", "history-chat");
-    button.type = "button";
-    button.title = title;
-    if (chat.pinned) {
-      button.append(icon("pin"));
-      button.setAttribute("aria-label", title + ", pinned");
-    }
-    button.append(element("span", "history-title", title));
-    if (chat.chatId === state.chatId) button.setAttribute("aria-current", "true");
-    button.addEventListener("click", () => {
-      if (chat.chatId !== state.chatId) activateChat(chat);
-      else if (window.innerWidth <= 700) setDrawer(false);
-    });
-    const options = element("button", "icon-button history-options");
-    options.type = "button";
-    options.title = "Chat options";
-    options.dataset.chatId = chat.chatId;
-    options.setAttribute("aria-label", "Options for " + title);
-    options.setAttribute("aria-haspopup", "dialog");
-    options.append(icon("more"));
-    options.addEventListener("click", () => openChatTools(chat.chatId));
-    row.append(button, options);
-    historyList.append(row);
+  const groups = new Map();
+  for (const chat of matches) {
+    const id = chat.selected || "";
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(chat);
   }
+  for (const [id, label] of [["", "All product guides"], ...labels]) {
+    const chats = groups.get(id);
+    if (!chats) continue;
+    const group = element("section", "history-group");
+    if (!state.historyGuide) group.append(element("h3", "history-group-title", label));
+    chats.sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned)));
+    group.append(...chats.map(makeHistoryRow));
+    historyList.append(group);
+  }
+}
+
+function makeHistoryRow(chat) {
+  const title = chat.title || "Untitled chat";
+  const row = element("div", "history-row");
+  const button = element("button", "history-chat");
+  button.type = "button";
+  button.title = title;
+  if (chat.pinned) {
+    button.append(icon("pin"));
+    button.setAttribute("aria-label", title + ", pinned");
+  }
+  button.append(element("span", "history-title", title));
+  if (chat.chatId === state.chatId) button.setAttribute("aria-current", "true");
+  button.addEventListener("click", () => {
+    if (chat.chatId !== state.chatId) activateChat(chat);
+    else if (window.innerWidth <= 700) setDrawer(false);
+  });
+  const options = element("button", "icon-button history-options");
+  options.type = "button";
+  options.title = "Chat options";
+  options.dataset.chatId = chat.chatId;
+  options.setAttribute("aria-label", "Options for " + title);
+  options.setAttribute("aria-haspopup", "dialog");
+  options.append(icon("more"));
+  options.addEventListener("click", () => openChatTools(chat.chatId));
+  row.append(button, options);
+  return row;
 }
 
 function selectedSavedChat() {
@@ -893,6 +930,10 @@ document.addEventListener("keydown", (event) => {
 $("new-chat").addEventListener("click", () => activateChat(blankConversation()));
 $("export-chat").addEventListener("click", () => downloadTranscript(state));
 $("chat-search").addEventListener("input", showHistory);
+historyGuide.addEventListener("change", () => {
+  state.historyGuide = historyGuide.value;
+  showHistory();
+});
 $("close-chat-tools").addEventListener("click", () => chatTools.close());
 chatTools.addEventListener("close", () => {
   const id = state.toolChatId;

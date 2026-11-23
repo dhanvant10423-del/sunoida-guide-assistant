@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#c60067">
   <title>Sunoida User Guide Assistant</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css?v=attachments">
-  <script src="/assets/inline-pages.js?v=attachments" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=guide-history">
+  <script src="/assets/inline-pages.js?v=guide-history" defer></script>
 </head>
 <body>
   <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -40,7 +40,9 @@
     </div>
     <div class="history-heading">
       <h2 id="history-heading">Chats</h2>
-      <span id="history-guide" class="history-guide" hidden></span>
+      <select id="history-guide" class="history-guide" aria-label="Filter saved chats by guide">
+        <option value="">All chats</option>
+      </select>
     </div>
     <button id="new-chat" class="new-chat" type="button"><svg class="icon"><use href="#i-plus"/></svg> New chat</button>
     <label class="history-search" for="chat-search">

@@ -125,7 +125,9 @@ The **Chats** sidebar saves pinned chats and up to 30 other recent chats, with u
 to 40 messages each in the current browser. Open one to restore its messages and
 selected guide. Search by title or message text. Use the chat options button
 to pin, rename, delete, copy, download, or share a transcript.
-Picking one guide filters the sidebar to chats started with that guide.
+Saved chats are grouped by guide when the app opens. Use the filter beside
+**Chats** to see conversations started with a specific guide. The picker beside
+Send sets the guide for the conversation, independently of the history filter.
 The server's answer context is available while its session is active. Stopping a
 request starts a new session for the next question.
 
