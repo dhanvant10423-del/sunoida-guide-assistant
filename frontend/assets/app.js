@@ -156,7 +156,6 @@ function updateComposer() {
   send.disabled = !state.controller && !input.value.trim();
   send.replaceChildren(icon(state.controller ? "stop" : "arrow"));
   send.setAttribute("aria-label", state.controller ? "Stop waiting for this answer" : "Send question");
-  $("workspace").classList.toggle("is-empty", !state.messages.length);
   guideSelect.disabled = Boolean(state.controller) || !state.guides.some((guide) => guide.available);
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
