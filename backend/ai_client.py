@@ -20,11 +20,10 @@ from point_images import render_point_pages, reply_with_page_labels
 client = Client(host=settings.ollama_url, timeout=settings.ollama_timeout)
 SYSTEM_PROMPT = """
 You are the Sunoida guide assistant. Answer using ONLY the supplied guide excerpts.
-Open with a short paragraph that directly answers the latest question. State the
-actual definition, outcome, menu location, or key action. Skip introductory
-phrases such as "Here are the steps". For procedures, place the numbered steps
-after that paragraph. Preserve exact UI labels. Use steps only when requested
-or needed to explain a procedure.
+For a procedure, name the task in a short opening sentence before the numbered
+steps. For example, "Here are the steps to set up a data source connector."
+Keep the first action in step 1. For other questions, give the definition,
+outcome, or menu location directly. Preserve exact UI labels.
 Cite supporting excerpts with their provided numbers, for example [1].
 Put citations beside the paragraph or step they support. Separate distinct points
 into paragraphs. Cite a guide page only where useful; do not repeat the same citation
@@ -126,24 +125,55 @@ def split_answer(reply):
     return blocks
 
 
-def ensure_procedure_lead(reply):
-    """Put the first actionable sentence before a list that opens with filler."""
-    blocks = split_answer(reply)
-    for index, block in enumerate(blocks[:2]):
-        step = re.match(r"^1[.)]\s+(.+)", block["text"])
+PROCEDURE_REQUEST = re.compile(
+    r"^(?:please\s+)?(?:(?:(?:can|could|would) you\s+)?(?:show me|tell me|explain)\s+)?"
+    r"(?:how (?:do|can|should) (?:i|we|you)|how to|(?:what are )?(?:the )?(?:exact )?steps to)\s+",
+    re.IGNORECASE,
+)
+PROCEDURE_ACTION = re.compile(
+    r"^(?:set up|setup|configure|create|add|connect|publish|approve|authorize|"
+    r"run|schedule|delete|remove|edit|change|update|enable|disable|open|view|"
+    r"export|import|upload|download|test|check|reset|use|build|assign|manage|"
+    r"validate|review|apply|install|access|filter|monitor|find|save|deploy)\s+\S",
+    re.IGNORECASE,
+)
+STEP_INTRO = re.compile(
+    r"^(?:(?:here are|these are|below are) (?:the |some )?steps\b|here is how\b|the following steps\b|"
+    r"#{1,4}\s*(?:how to|steps?\b)|(?:the )?steps?\s|(?:.*,\s*)?follow (?:these|the) steps\b)",
+    re.IGNORECASE,
+)
+
+
+def ensure_procedure_lead(reply, question, guide_title=None):
+    """Introduce the task and remove an opening that repeats the first step."""
+    request = " ".join(question.strip().rstrip("?.!").split())
+    prefix = PROCEDURE_REQUEST.match(request)
+    task = request[prefix.end():] if prefix else request
+    task = re.sub(r"^setup\b", "set up", task, flags=re.IGNORECASE)
+    if not prefix and not PROCEDURE_ACTION.match(task):
+        return reply
+    task = re.sub(r"^set up (?=data source connector\b)", "set up a ", task, flags=re.IGNORECASE)
+    blocks = [block["text"] for block in split_answer(reply)]
+    for index, block in enumerate(blocks[:3]):
+        step = re.match(r"^1[.)]\s+(.+)", block)
         if not step:
             continue
-        if index and not re.search(
-            r"(?:\bhere (?:are|is) (?:the |how)|\bfollow (?:these|the) steps\b|\bsteps? (?:to|for)\b)",
-            blocks[0]["text"], re.IGNORECASE,
-        ):
-            return reply
-        lead = re.split(r"(?<=[.!?])\s+(?=[A-Z])", step[1], maxsplit=1)[0].strip()
-        if lead:
-            if lead[-1] not in ".!?" and not re.search(r"\[\d+\]$", lead):
-                lead += "."
-            return lead + "\n\n" + "\n\n".join(item["text"] for item in blocks[index:])
+        first_action = _opening_words(step[1])
+        preface = [
+            text for text in blocks[:index]
+            if not STEP_INTRO.match(text) and _opening_words(text) != first_action
+        ]
+        if guide_title and guide_title.casefold() not in task.casefold():
+            task += f" in {guide_title}"
+        intro = f"Here are the steps to {task[:1].lower() + task[1:]}."
+        return "\n\n".join([intro, *preface, *blocks[index:]])
     return reply
+
+
+def _opening_words(text):
+    text = re.sub(r"\[\d+\]", "", text)
+    sentence = re.split(r"(?<=[.!?])\s+", text.strip(), maxsplit=1)[0]
+    return re.findall(r"\w+", sentence.casefold())
 
 
 def build_answer_blocks(reply, passages):
@@ -384,7 +414,6 @@ def answer_question(message: str, source=None, conversation=None):
             "context": context, "question": message,
             "history": history,
         }).strip()
-        reply = ensure_procedure_lead(reply)
     if not reply:
         raise RuntimeError("The local model returned an empty answer.")
     if "NO_GUIDE_ANSWER" in reply or re.search(
@@ -392,6 +421,9 @@ def answer_question(message: str, source=None, conversation=None):
         reply, re.IGNORECASE,
     ):
         return refusal("generation_declined")
+    guide_titles = {reference["title"] for reference in references}
+    title = next(iter(guide_titles)) if len(guide_titles) == 1 else None
+    reply = ensure_procedure_lead(reply, message, title)
     valid_numbers = {str(item["index"]) for item in references}
     reply = re.sub(r"\[(\d+)\]", lambda match: match.group(0) if match[1] in valid_numbers else "", reply)
     result = {"reply": reply, "sources": references, "status": "answered"}

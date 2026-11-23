@@ -41,11 +41,24 @@ class GuideAnswerTests(unittest.TestCase):
         self.assertIn("Sunoida User Guide Assistant", answer["reply"])
         self.assertEqual(answer["sources"], [])
 
-    def test_direct_answer_precedes_numbered_steps(self):
-        formatted = ensure_procedure_lead("Follow these steps:\n\n1. Open Feed Configuration.\n2. Select a feed.")
-        self.assertTrue(formatted.startswith("Open Feed Configuration.\n\n1."))
-        self.assertIn("2. Select a feed.", formatted)
+    def test_connector_opening_names_task_without_repeating_first_action(self):
+        steps = "1. Open the ETL Connector Config module. [1]\n2. Click Add."
+        for previous in ("", "Follow these steps:\n\n", "**Open the ETL Connector Config module.**\n\n"):
+            with self.subTest(previous=previous):
+                formatted = ensure_procedure_lead(previous + steps, "How do I setup a data source connector?", "Vision ETL")
+                self.assertTrue(formatted.startswith("Here are the steps to set up a data source connector in Vision ETL.\n\n1."))
+                self.assertEqual(formatted.count("Open the ETL Connector Config module."), 1)
+                self.assertIn("2. Click Add.", formatted)
         self.assertEqual(title_for("How do I configure an ETL feed?"), "Configure an ETL feed")
+
+    def test_procedure_keeps_useful_context_and_leaves_prose_answers_alone(self):
+        reply = "A Checker must authorize the feed.\n\n1. Click Publish.\n2. Wait for approval."
+        formatted = ensure_procedure_lead(reply, "How do I publish a feed in Vision ETL?", "Vision ETL")
+        self.assertTrue(formatted.startswith("Here are the steps to publish a feed in Vision ETL.\n\nA Checker"))
+        simple = "The Data Trust Score measures governance evidence. [1]"
+        self.assertEqual(ensure_procedure_lead(simple, "What is the Data Trust Score?"), simple)
+        numbered = "1. The DQ Health Index.\n2. The Data Trust Score."
+        self.assertEqual(ensure_procedure_lead(numbered, "What are the two scores?"), numbered)
 
     def test_figure_selection_reuses_mapped_figures_and_checks_other_sources(self):
         references = [{"index": index, "document_id": "guide", "page": index} for index in range(1, 4)]
