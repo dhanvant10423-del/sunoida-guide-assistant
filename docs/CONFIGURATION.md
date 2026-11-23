@@ -6,7 +6,7 @@ is absent. Invalid ports, URLs, numbers and ranges are rejected during startup.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SUNOIDA_APP_NAME` | Sunoida Guide Assistant | API title and launcher name |
+| `SUNOIDA_APP_NAME` | Sunoida User Guide Assistant | API title and launcher name |
 | `SUNOIDA_HOST` | 127.0.0.1 | IPv4 address on which the server listens |
 | `SUNOIDA_PORT` | 8000 | First server port |
 | `SUNOIDA_PORT_FALLBACK_COUNT` | 10 | Number of additional ports to try |
@@ -15,6 +15,7 @@ is absent. Invalid ports, URLs, numbers and ranges are rejected during startup.
 | `SUNOIDA_OLLAMA_URL` | http://127.0.0.1:11434 | Ollama service address |
 | `SUNOIDA_OLLAMA_TIMEOUT` | 180 | Model request timeout in seconds |
 | `SUNOIDA_CHAT_MODEL` | qwen2.5:0.5b | Answer-generation model |
+| `SUNOIDA_VISION_MODEL` | qwen3-vl:2b | Model used for screenshot and image uploads |
 | `SUNOIDA_EMBED_MODEL` | nomic-embed-text:v1.5 | Must match the indexed embeddings |
 | `SUNOIDA_TEMPERATURE` | 0.1 | Generation variability |
 | `SUNOIDA_CONTEXT_WINDOW` | 4096 | Model context size in tokens |
@@ -45,7 +46,8 @@ Then restart with `START_CHATBOT.cmd`. Its terminal prints the selected URL.
 Increasing the similarity cutoff makes retrieval more restrictive. Similarity is
 a heuristic, not an accuracy probability; the separate topic check still runs.
 
-Model changes are checked against Ollama at startup. If using a non-default Ollama
+The chat and embedding models are checked at startup. The vision model is
+required when asking about an image. If using a non-default Ollama
 address, start that service yourself; automatic startup is limited to the default
 local address. A different embedding model or incompatible collection needs a
 matching newly prepared vector index.
@@ -56,8 +58,9 @@ paths, so the frontend follows whichever port the launcher selected.
 Conversation limits bound local memory use. Expired conversations are removed on
 the next request. At capacity, the oldest inactive conversation is evicted; active
 requests are not evicted. History is held in the backend process and is not written
-to Chroma or to disk. Use a single worker. Restarting the backend, switching guide
-selection or choosing New chat starts fresh context. The browser saves transcripts
+to Chroma or to disk. Use a single worker. Restarting the backend or choosing
+New chat starts fresh context. The browser saves transcripts
 and guide selections in its chat history. Reopening a chat can reuse its answer
 context while its backend session is still active.
-The API returns `409` when the same conversation already has a request in progress.
+The API returns `409` when a request changes a conversation's guide or when the
+same conversation already has a request in progress.

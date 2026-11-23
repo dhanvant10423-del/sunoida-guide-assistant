@@ -12,6 +12,9 @@ function newConversationId() {
 }
 const CHAT_STORAGE_KEY = "sunoida.current-chat.v1";
 const HISTORY_STORAGE_KEY = "sunoida.chat-history.v1";
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+const ATTACHMENT_EXTENSIONS = /\.(?:png|jpe?g|webp|pdf|docx|txt|md|csv|json)$/i;
 
 function blankConversation() {
   const id = newConversationId();
@@ -57,7 +60,7 @@ const activeChat = history.deleted.includes(previousChat.chatId)
   : history.chats.find((chat) => chat.chatId === previousChat.chatId) || previousChat;
 const state = {
   guides: [], history, controller: null, sequence: 0, viewer: null, toolChatId: null,
-  ...activeChat, messages: [...activeChat.messages],
+  ...activeChat, messages: [...activeChat.messages], attachments: [],
 };
 
 function writeHistory(history, prune = false) {
@@ -109,6 +112,8 @@ const log = $("messages");
 const status = $("status");
 const dialog = $("page-dialog");
 const guideSelect = $("guide-select");
+const attachmentInput = $("attachment-input");
+const addAttachmentButton = $("add-attachment");
 const historyList = $("chat-history");
 const chatTools = $("chat-tools");
 
@@ -153,12 +158,75 @@ async function requestJson(url, options = {}) {
 
 function updateComposer() {
   $("character-count").textContent = `${input.value.length} / 2000`;
-  send.disabled = !state.controller && !input.value.trim();
+  const locked = Boolean(state.messages.length);
+  send.disabled = !state.controller && !input.value.trim() && !state.attachments.length;
   send.replaceChildren(icon(state.controller ? "stop" : "arrow"));
   send.setAttribute("aria-label", state.controller ? "Stop waiting for this answer" : "Send question");
-  guideSelect.disabled = Boolean(state.controller) || !state.guides.some((guide) => guide.available);
+  guideSelect.disabled = locked || Boolean(state.controller) || !state.guides.some((guide) => guide.available);
+  $("guide-picker").classList.toggle("is-locked", locked);
+  $("guide-picker").title = locked ? "Guide locked. Start a new chat to pick another guide." : "Choose a guide for this chat";
+  $("guide-lock").hidden = !locked;
+  addAttachmentButton.disabled = Boolean(state.controller) || state.attachments.length >= MAX_ATTACHMENTS;
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
+}
+
+function attachmentChip(name) {
+  const chip = element("li");
+  chip.append(icon(/\.(?:png|jpe?g|webp)$/i.test(name) ? "image" : "file"), element("span", "", name));
+  return chip;
+}
+
+function renderDraftAttachments() {
+  const list = $("attachment-drafts");
+  list.replaceChildren();
+  list.hidden = state.attachments.length === 0;
+  for (const file of state.attachments) {
+    const chip = attachmentChip(file.name);
+    const remove = element("button");
+    remove.type = "button";
+    remove.setAttribute("aria-label", "Remove " + file.name);
+    remove.append(icon("close"));
+    remove.addEventListener("click", () => {
+      state.attachments = state.attachments.filter((item) => item !== file);
+      status.textContent = "";
+      renderDraftAttachments();
+      updateComposer();
+      addAttachmentButton.focus({ preventScroll: true });
+    });
+    chip.append(remove);
+    list.append(chip);
+  }
+}
+
+function addAttachments(files) {
+  if (state.controller) return;
+  const errors = new Set();
+  for (const file of files) {
+    if (!ATTACHMENT_EXTENSIONS.test(file.name)) {
+      errors.add("Use PNG, JPG, WebP, PDF, DOCX, TXT, Markdown, CSV, or JSON.");
+    } else if (!file.size || file.size > MAX_ATTACHMENT_BYTES) {
+      errors.add(file.name + " must be between 1 byte and 4 MB.");
+    } else if (!state.attachments.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) {
+      if (state.attachments.length >= MAX_ATTACHMENTS) {
+        errors.add("You can add up to three attachments per message.");
+        break;
+      }
+      state.attachments.push(file);
+    }
+  }
+  status.textContent = Array.from(errors).join(" ");
+  renderDraftAttachments();
+  updateComposer();
+}
+
+function encodeAttachment(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve({ name: file.name, data: reader.result.split(",")[1] }));
+    reader.addEventListener("error", () => reject(new Error("Could not read " + file.name + ". Select the file again.")));
+    reader.readAsDataURL(file);
+  });
 }
 
 function scrollToLatest() {
@@ -187,7 +255,16 @@ function syncNavigation() {
 
 function updateGuidePicker() {
   const guide = state.guides.find((item) => item.id === state.selected && item.available);
-  guideSelect.value = guide?.id || "";
+  const unavailable = Array.from(guideSelect.children).find((option) => option.dataset.missingGuide);
+  unavailable?.remove();
+  if (state.selected && !Array.from(guideSelect.children).some((option) => option.value === state.selected)) {
+    const option = element("option", "", "Saved guide");
+    option.value = state.selected;
+    option.disabled = true;
+    option.dataset.missingGuide = "true";
+    guideSelect.append(option);
+  }
+  guideSelect.value = state.selected || "";
   $("open-guide").hidden = !guide;
   input.placeholder = guide ? "Ask about " + guide.title + "…" : "Ask anything about your Sunoida guides…";
 }
@@ -203,19 +280,20 @@ function loadGuidePicker(guides) {
     option.disabled = !guide.available;
     guideSelect.append(option);
   }
-  if (state.selected && !guides.some((guide) => guide.id === state.selected && guide.available)) {
+  if (!state.messages.length && state.selected && !guides.some((guide) => guide.id === state.selected && guide.available)) {
     setScope(null);
   }
   updateGuidePicker();
-  guideSelect.disabled = Boolean(state.controller) || !guides.some((guide) => guide.available);
+  updateComposer();
+  showHistory();
 }
 
 function setScope(id) {
-  if (id === state.selected || state.controller) return;
-  if (state.messages.length) {
-    state.sessionId = newConversationId();
-    status.textContent = "Guide changed. The next question starts with fresh context.";
+  if (state.messages.length || state.controller) {
+    updateGuidePicker();
+    return;
   }
+  if (id === state.selected) return;
   state.selected = id;
   updateGuidePicker();
   saveConversation();
@@ -223,13 +301,18 @@ function setScope(id) {
 
 function showHistory() {
   historyList.replaceChildren();
+  const filter = $("history-guide");
+  filter.hidden = !state.selected;
+  filter.textContent = state.guides.find((guide) => guide.id === state.selected)?.title || "Saved guide";
   const query = $("chat-search").value.trim().toLowerCase();
   const matches = state.history.chats.filter((chat) => {
+    if (state.selected && chat.selected !== state.selected) return false;
     return !query || chat.title?.toLowerCase().includes(query) ||
       chat.messages.some((message) => message.text?.toLowerCase().includes(query));
   });
   if (!matches.length) {
-    historyList.append(element("p", "history-empty", query ? "No matching chats" : "No previous chats yet"));
+    const empty = state.selected ? "No chats for this guide yet" : "No previous chats yet";
+    historyList.append(element("p", "history-empty", query ? "No matching chats" : empty));
     return;
   }
   const ordered = [...matches].sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned)));
@@ -319,7 +402,7 @@ function deleteSavedChat() {
 }
 
 function transcriptText(chat) {
-  const title = chat.title || "Sunoida Guide Assistant";
+  const title = chat.title || "Sunoida User Guide Assistant";
   return title + "\n\n" + chat.messages.map((message) => message.role + "\n" + message.text).join("\n\n---\n\n");
 }
 
@@ -337,7 +420,7 @@ function downloadTranscript(chat) {
 function renderConversation() {
   log.replaceChildren();
   for (const message of state.messages) {
-    if (message.role === "You") makeUserMessage(message.text);
+    if (message.role === "You") makeUserMessage(message.text, message.attachments);
     else if (message.data) makeAssistantMessage(message.data);
   }
   $("export-chat").disabled = !state.messages.length;
@@ -355,25 +438,27 @@ function activateChat(chat, preservePending = true) {
     if (preservePending) saveConversation();
   }
   const { chatId, sessionId, selected, title, messages } = chat;
-  Object.assign(state, { chatId, sessionId, selected, title, messages: [...messages] });
-  if (state.guides.length && selected && !state.guides.some((guide) => guide.id === selected && guide.available)) {
-    state.selected = null;
-    state.sessionId = newConversationId();
-    saveConversation();
-  } else {
-    saveConversation(false);
-  }
+  Object.assign(state, { chatId, sessionId, selected, title, messages: [...messages], attachments: [] });
+  saveConversation(false);
   input.value = "";
   status.textContent = "";
+  renderDraftAttachments();
   updateGuidePicker();
   renderConversation();
   if (window.innerWidth <= 700) setDrawer(false);
   input.focus({ preventScroll: true });
 }
 
-function makeUserMessage(text) {
+function makeUserMessage(text, files = []) {
   const article = element("article", "message message-user");
-  article.append(element("div", "user-content", text));
+  const content = element("div", "user-content", text);
+  if (files.length) {
+    const list = element("ul", "attachment-list");
+    list.setAttribute("aria-label", "Attached files");
+    for (const name of files) list.append(attachmentChip(name));
+    content.append(list);
+  }
+  article.append(content);
   log.append(article);
   return article;
 }
@@ -658,7 +743,8 @@ function makeAssistantMessage(data) {
 }
 
 async function submitQuestion(question) {
-  const message = question.trim();
+  const files = [...state.attachments];
+  const message = question.trim() || (files.length ? "What can you tell me about the attached files?" : "");
   if (!message || state.controller) return;
   if (message.length > 2000) { status.textContent = "Please keep your question within 2,000 characters."; return; }
   const sequence = ++state.sequence;
@@ -666,9 +752,12 @@ async function submitQuestion(question) {
   state.controller = controller;
   status.textContent = "";
   input.value = "";
-  makeUserMessage(message);
-  state.messages.push({ role: "You", text: message });
-  state.title ||= message.replace(/\s+/g, " ").slice(0, 120);
+  state.attachments = [];
+  renderDraftAttachments();
+  const names = files.map((file) => file.name);
+  makeUserMessage(message, names);
+  state.messages.push({ role: "You", text: message, ...(names.length ? { attachments: names } : {}) });
+  state.title ||= (question.trim() || names[0]).replace(/\s+/g, " ").slice(0, 120);
   if (!saveConversation()) return;
   updateComposer();
   $("export-chat").disabled = false;
@@ -676,15 +765,19 @@ async function submitQuestion(question) {
   const dots = element("span", "pending-dots");
   dots.setAttribute("aria-hidden", "true");
   dots.append(element("i"), element("i"), element("i"));
-  pending.append(dots, document.createTextNode("Looking through your guides and preparing an answer…"));
+  pending.append(dots, document.createTextNode(files.length ? "Reading your attachments and preparing an answer…" : "Preparing an answer…"));
   log.append(pending);
   scrollToLatest();
   const timer = setTimeout(() => controller.abort("timeout"), 360000);
   let answerArticle = null;
   try {
-    const data = await requestJson("/chat", {
+    const payload = { message, source_id: state.selected, session_id: state.sessionId };
+    if (files.length) payload.attachments = await Promise.all(files.map(encodeAttachment));
+    if (sequence !== state.sequence) return;
+    controller.signal.throwIfAborted();
+    const data = await requestJson(files.length ? "/chat/attachments" : "/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, source_id: state.selected, session_id: state.sessionId }), signal: controller.signal,
+      body: JSON.stringify(payload), signal: controller.signal,
     });
     if (sequence !== state.sequence) return;
     if (typeof data.reply !== "string") throw new Error("The backend response is missing its reply.");
@@ -696,13 +789,20 @@ async function submitQuestion(question) {
     if (sequence !== state.sequence) return;
     // A stopped request may still complete on the server. Do not remember an
     // unseen answer in the next question's conversation.
-    state.sessionId = newConversationId();
-    saveConversation();
+    if (controller.signal.aborted) {
+      state.sessionId = newConversationId();
+      saveConversation();
+    }
     const text = controller.signal.aborted
       ? (controller.signal.reason === "timeout" ? "This answer took too long. Try a shorter question or check Ollama." : "Stopped waiting for this answer. Ollama may still finish the request in the background.")
       : error.message;
     log.append(element("div", "message message-error", text));
-    status.textContent = "Conversation memory has been reset. Please name the product and topic in your next question.";
+    if (files.length) {
+      state.attachments = files;
+      if (!input.value) input.value = question;
+      renderDraftAttachments();
+    }
+    if (controller.signal.aborted) status.textContent = "Conversation memory has been reset.";
   } finally {
     clearTimeout(timer);
     pending.remove();
@@ -760,6 +860,19 @@ send.addEventListener("click", (event) => {
   if (state.controller) { event.preventDefault(); state.controller.abort(); }
 });
 input.addEventListener("input", updateComposer);
+addAttachmentButton.addEventListener("click", () => attachmentInput.click());
+attachmentInput.addEventListener("change", () => {
+  addAttachments(Array.from(attachmentInput.files));
+  attachmentInput.value = "";
+});
+input.addEventListener("paste", (event) => {
+  if (state.controller) return;
+  const images = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/"));
+  if (images.length) {
+    event.preventDefault();
+    addAttachments(images);
+  }
+});
 input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();

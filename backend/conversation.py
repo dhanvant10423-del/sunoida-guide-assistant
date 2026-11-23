@@ -4,18 +4,28 @@ Only successfully grounded answers are remembered. Memory is context for resolvi
 follow-ups, never evidence for an answer. Restarting the server clears the store.
 """
 
+from __future__ import annotations
+
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import re
 from threading import Lock
 from time import monotonic
+from typing import TYPE_CHECKING
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from config import settings
 
+if TYPE_CHECKING:
+    from attachments import Attachment
+
 
 class ConversationBusyError(RuntimeError):
+    pass
+
+
+class ConversationScopeError(RuntimeError):
     pass
 
 
@@ -44,6 +54,7 @@ class Conversation:
     last_used: float = field(default_factory=monotonic)
     lock: Lock = field(default_factory=Lock)
     active: int = 0
+    attachments: tuple[Attachment, ...] = ()
 
     def reset(self, scope=None):
         self.history.clear()
@@ -54,6 +65,7 @@ class Conversation:
         self.pending_suggestion = None
         self.source = None
         self.scope = scope
+        self.attachments = ()
 
     def remember(self, question, reply, anchor, source):
         # Citation numbers refer to the CURRENT retrieval, not earlier turns.
@@ -99,7 +111,7 @@ class ConversationStore:
                 raise ConversationBusyError("This conversation already has an answer in progress.")
             try:
                 if conversation.scope != scope:
-                    conversation.reset(scope)
+                    raise ConversationScopeError("Start a new chat to choose another guide.")
                 yield conversation
             finally:
                 conversation.lock.release()

@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#c60067">
-  <title>Sunoida · Guide Assistant</title>
+  <title>Sunoida User Guide Assistant</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css?v=bottom-composer">
-  <script src="/assets/inline-pages.js?v=chat-tools" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=attachments">
+  <script src="/assets/inline-pages.js?v=attachments" defer></script>
 </head>
 <body>
   <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -21,6 +21,8 @@
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Zm8 0v5h4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
@@ -32,9 +34,13 @@
 
   <button id="drawer-backdrop" class="drawer-backdrop" aria-label="Close chat history" hidden></button>
   <aside id="sidebar" class="sidebar" aria-labelledby="history-heading">
+    <div class="sidebar-brand">
+      <div><strong>Sunoida<span class="brand-dot">.</span></strong><span>User Guide Assistant</span></div>
+      <button id="close-history" class="icon-button mobile-menu" type="button" aria-label="Close chat history"><svg class="icon"><use href="#i-close"/></svg></button>
+    </div>
     <div class="history-heading">
       <h2 id="history-heading">Chats</h2>
-      <button id="close-history" class="icon-button mobile-menu" type="button" aria-label="Close chat history"><svg class="icon"><use href="#i-close"/></svg></button>
+      <span id="history-guide" class="history-guide" hidden></span>
     </div>
     <button id="new-chat" class="new-chat" type="button"><svg class="icon"><use href="#i-plus"/></svg> New chat</button>
     <label class="history-search" for="chat-search">
@@ -50,7 +56,7 @@
     <header class="topbar">
       <div class="topbar-title">
         <button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Open chat history" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
-        <strong>Sunoida<span class="brand-dot">.</span></strong><span>Guide Assistant</span>
+        <strong>Sunoida<span class="brand-dot">.</span></strong><span>User Guide Assistant</span>
       </div>
       <div class="toolbar-actions">
         <button id="export-chat" class="toolbar-button" type="button" aria-label="Export chat" disabled><svg class="icon"><use href="#i-download"/></svg><span>Export chat</span></button>
@@ -64,12 +70,15 @@
     <div class="composer-area"><div class="composer-wrap">
       <form id="chat-form" class="composer">
         <label class="sr-only" for="message">Ask a question about your Sunoida guides</label>
-        <textarea id="message" rows="2" maxlength="2000" placeholder="Ask anything about your Sunoida guides…" required></textarea>
+        <ul id="attachment-drafts" class="attachment-list" aria-label="Files to send" hidden></ul>
+        <textarea id="message" rows="2" maxlength="2000" placeholder="Ask anything about your Sunoida guides…"></textarea>
         <div class="composer-bottom">
+          <input id="attachment-input" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md,.csv,.json" multiple hidden>
+          <button id="add-attachment" class="icon-button attach-button" type="button" aria-label="Add screenshots or files" title="Add screenshots or files · Up to 3 files, 4 MB each"><svg class="icon"><use href="#i-plus"/></svg></button>
           <span id="character-count">0 / 2000</span>
           <div class="guide-control">
             <button id="open-guide" class="icon-button" type="button" aria-label="Open selected guide" title="Open selected guide" hidden><svg class="icon"><use href="#i-external"/></svg></button>
-            <label class="guide-picker" for="guide-select"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span class="sr-only">Search guide</span><select id="guide-select" disabled><option value="">All product guides</option></select></label>
+            <label id="guide-picker" class="guide-picker" for="guide-select"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span class="sr-only">Guide for this chat</span><select id="guide-select" disabled><option value="">All product guides</option></select><span id="guide-lock" hidden><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr-only">Guide locked. Start a new chat to choose another guide.</span></span></label>
           </div>
           <button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button>
         </div>

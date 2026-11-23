@@ -1,9 +1,10 @@
-# Sunoida Guide Assistant
+# Sunoida User Guide Assistant
 
 A local PDF question-answering application for Sunoida product guides. It uses
 Ollama for embeddings and answers, ChromaDB for retrieval, and FastAPI to serve
 the browser interface. LangChain connects Qwen to recent conversation messages.
-Screenshots are extracted from the original PDFs.
+Answers can include screenshots from the original PDFs. You can also attach
+your own screenshots and documents for the assistant to read.
 
 ## Run the existing project
 
@@ -63,6 +64,7 @@ for packages and any Ollama models you need to download.
 |   |-- config.py           # Loads and validates settings
 |   |-- main.py             # API routes and frontend serving
 |   |-- ai_client.py        # Answer generation and orchestration
+|   |-- attachments.py      # Attachment parsing and local vision answers
 |   |-- conversation.py     # Bounded conversation memory and follow-up context
 |   |-- search_guides.py    # Chroma search and similarity scoring
 |   |-- relevance_guard.py  # Topic checks and unsupported-question handling
@@ -89,6 +91,7 @@ root, even when you start from another folder.
 
 ```dotenv
 SUNOIDA_CHAT_MODEL=qwen2.5:0.5b
+SUNOIDA_VISION_MODEL=qwen3-vl:2b
 SUNOIDA_EMBED_MODEL=nomic-embed-text:v1.5
 SUNOIDA_PORT=8000
 SUNOIDA_MIN_SIMILARITY=0.67
@@ -115,19 +118,37 @@ to rewrite the question. LangChain's `ChatPromptTemplate`, `MessagesPlaceholder`
 message objects and `ChatOllama` handle the model conversation.
 
 Click **New chat** to open a blank conversation. Use the guide picker in the
-message box to search one guide or all guides. Changing the guide starts fresh
-answer context, and the transcript stays visible.
+message box to choose one guide or all guides. Sending the first message locks
+that choice. Start a new chat to use a different guide.
 
 The **Chats** sidebar saves pinned chats and up to 30 other recent chats, with up
 to 40 messages each in the current browser. Open one to restore its messages and
 selected guide. Search by title or message text. Use the chat options button
 to pin, rename, delete, copy, download, or share a transcript.
-The server's answer context is available while its session is active. Stopped
-or failed requests use a new session so unseen answers cannot affect the next
-question.
+Picking one guide filters the sidebar to chats started with that guide.
+The server's answer context is available while its session is active. Stopping a
+request starts a new session for the next question.
 
 Ask "Show me step 2" to revisit that numbered step from the last procedure. From
 there, ask "What is the next step?" to continue through the same procedure.
+
+## Asking about screenshots and files
+
+Install the Ollama vision model once to ask questions about screenshots.
+
+```bat
+ollama pull qwen3-vl:2b
+```
+
+Use **+** beside the message box, or paste a screenshot into it. Add a question
+such as "What does this error mean?" and send the message. Supported types are
+PNG, JPG, WebP, PDF, DOCX, TXT, Markdown, CSV, and JSON. You can attach up to three
+files at a time, each up to 4 MB. For a scanned PDF or a specific section of a
+long document, attach the relevant screenshot or a short excerpt.
+
+Follow-up questions can use the latest attachments while that chat's backend
+session is active. Chat history stores the filenames and replies. Attach the
+files again after restarting the backend or after the session expires.
 
 After a supported answer, the chatbot can offer a related question with evidence
 in the same guide. Click the suggestion or reply **Yes** to continue. The prompt

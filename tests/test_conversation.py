@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableLambda
 
 import ai_client
 import conversation
-from conversation import Conversation, ConversationBusyError, ConversationStore, resolve_follow_up
+from conversation import Conversation, ConversationBusyError, ConversationScopeError, ConversationStore, resolve_follow_up
 import main
 
 
@@ -49,11 +49,14 @@ class MemoryTests(unittest.TestCase):
                 self.assertLessEqual(len(item.history.messages), 4)
                 self.assertLessEqual(sum(len(m.content) for m in item.history.messages), 1000)
                 self.assertNotIn("[1]", item.history.messages[-1].content)
-            with store.use("one", "BI.pdf") as changed:
-                self.assertFalse(changed.history.messages)
-                self.assertFalse(changed.anchor)
-                changed.remember("q" * 2000, "a" * 3000, "topic", "BI.pdf")
-                self.assertLessEqual(sum(len(m.content) for m in changed.history.messages), 1000)
+            with self.assertRaises(ConversationScopeError):
+                with store.use("one", "BI.pdf"):
+                    pass
+            with store.use("one", "ETL.pdf") as unchanged:
+                self.assertEqual(unchanged.anchor, "feed")
+                self.assertTrue(unchanged.history.messages)
+                unchanged.remember("q" * 2000, "a" * 3000, "topic", "ETL.pdf")
+                self.assertLessEqual(sum(len(m.content) for m in unchanged.history.messages), 1000)
 
     def test_follow_up_keeps_new_unsupported_topic(self):
         item = Conversation(anchor="How do I configure a feed in Vision ETL?")
