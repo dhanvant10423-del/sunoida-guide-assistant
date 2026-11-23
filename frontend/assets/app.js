@@ -720,8 +720,29 @@ function makeAssistantMessage(data) {
   if (sources.length) {
     article.append(element("p", "source-notice", "Screenshots are extracted from the guides where available. Check the guide references for context."));
   }
+  for (const source of data.web_sources || []) {
+    let url;
+    try { url = new URL(source.url); } catch { continue; }
+    if (url.protocol !== "https:" || !["sunoida.com", "www.sunoida.com"].includes(url.hostname)) continue;
+    const link = element("a", "website-source", source.title || "Sunoida official website");
+    link.href = url.href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    article.append(link);
+  }
   const suggestion = data.suggested_follow_up;
-  if (typeof suggestion?.prompt === "string" && typeof suggestion?.question === "string") {
+  const related = Array.isArray(data.related_questions) ? data.related_questions.filter((q) => typeof q === "string").slice(0, 3) : [];
+  if (related.length) {
+    const group = element("div", "related-questions");
+    group.append(element("p", "", "Are you looking for any of these?"));
+    for (const question of related) {
+      const button = element("button", "follow-up-question", question);
+      button.type = "button";
+      button.addEventListener("click", () => submitQuestion(question));
+      group.append(button);
+    }
+    article.append(group);
+  } else if (typeof suggestion?.prompt === "string" && typeof suggestion?.question === "string") {
     const followUp = element("button", "follow-up-question", suggestion.prompt);
     followUp.type = "button";
     followUp.addEventListener("click", () => submitQuestion(suggestion.question));
@@ -733,7 +754,7 @@ function makeAssistantMessage(data) {
   copy.append(icon("copy"), document.createTextNode("Copy answer"));
   copy.addEventListener("click", async () => {
     try {
-      const references = sources.map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`).join("\n");
+      const references = [...sources.map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`), ...(data.web_sources || []).map((source) => source.title + " — " + source.url)].join("\n");
       await navigator.clipboard.writeText(data.reply + (references ? `\n\nRetrieved references:\n${references}` : ""));
       copy.replaceChildren(icon("check"), document.createTextNode("Copied"));
       setTimeout(() => copy.replaceChildren(icon("copy"), document.createTextNode("Copy answer")), 1800);
@@ -785,7 +806,7 @@ async function submitQuestion(question) {
     if (sequence !== state.sequence) return;
     if (typeof data.reply !== "string") throw new Error("The backend response is missing its reply.");
     answerArticle = makeAssistantMessage(data);
-    const references = (data.sources || []).map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`).join("\n");
+    const references = [...(data.sources || []).map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`), ...(data.web_sources || []).map((source) => source.title + " — " + source.url)].join("\n");
     state.messages.push({ role: "Sunoida Assistant", data, text: data.reply + (references ? "\n\nRetrieved references:\n" + references : "") });
     saveConversation(true, data.chat_title);
   } catch (error) {

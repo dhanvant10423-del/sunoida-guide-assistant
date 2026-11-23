@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import ChatOllama
 from config import settings
 from conversation import is_follow_up, previous_step, resolve_follow_up
+from guide_confirmation import answer_confirmation, confirmation_lookup, is_yes_no_question
 from guide_features import connector_add_action, connector_add_answer, documented_feature, feature_check, unconfirmed_feature
 from guide_followups import ETL_SETUP_REQUEST, offer_for
 from guide_overview import is_overview, product_overview
@@ -365,7 +366,6 @@ def answer_question(message: str, source=None, conversation=None):
                 "chat_title": "About the guide assistant",
             }
     feature_document = None
-    model_question = message
     if feature:
         label, named = feature
         if source and named and named != source:
@@ -385,12 +385,6 @@ def answer_question(message: str, source=None, conversation=None):
             return verified
         source = source_for_feature
         retrieval_question = label
-        model_question = (
-            f"Does {feature_document['title']} have a screen or feature for {label}? "
-            f"If the guide confirms it, open with 'Yes, {feature_document['title']} has' and name the feature. "
-            "Then explain what it does, when it is useful, and where to find it if documented. "
-            "Include a practical example when the excerpts support one."
-        )
     elif is_follow_up(message) and not (conversation and conversation.anchor) and not source:
         if not named_source:
             return {"reply": "Which Sunoida product and feature do you mean? Please ask a complete question to start this conversation.",
@@ -398,6 +392,9 @@ def answer_question(message: str, source=None, conversation=None):
     if not feature:
         retrieval_question, follow_up = resolve_follow_up(message, conversation)
         follow_up = follow_up or accepted
+    confirmation = is_yes_no_question(message)
+    if confirmation:
+        retrieval_question = confirmation_lookup(retrieval_question)
     if follow_up and not source:
         source = conversation.source
     setup_request = bool(ETL_SETUP_REQUEST.fullmatch(message))
@@ -412,6 +409,10 @@ def answer_question(message: str, source=None, conversation=None):
         return refusal("weak_retrieval")
     candidates = []
     for match in matches:
+        if re.search(r"Support\s*&\s*Contact Information", match["text"], re.IGNORECASE) and not re.search(
+            r"\b(?:support|contact|email|phone|specialist)\b", message, re.IGNORECASE,
+        ):
+            continue
         document = documents.get(match["source"])
         if document is None:
             continue
@@ -419,7 +420,7 @@ def answer_question(message: str, source=None, conversation=None):
         for text in passage_sections(document, page, match["text"]):
             candidates.append({"index": len(candidates), "text": text, "page": page, "document": document})
     if not candidates:
-        raise GuideIndexError("Indexed filenames no longer match your PDFs. Rebuild the guide index.")
+        return refusal("no_supporting_evidence")
     # Check each passage before assigning shared page citation numbers. Otherwise
     # approval of one section would also admit unrelated sections on that page.
     approved = set(supported_sources(retrieval_question, candidates))
@@ -466,10 +467,20 @@ def answer_question(message: str, source=None, conversation=None):
             # Give the small local model the immediately relevant exchange. Older
             # procedure text can overwhelm a brief question about the latest reply.
             history = history[-2:]
-        reply = answer_chain.invoke({
-            "context": context, "question": model_question,
-            "history": history,
-        }).strip()
+        if confirmation:
+            reply = answer_confirmation(message, context, history, passages)
+            if reply is None:
+                if feature_document:
+                    return unconfirmed_feature(label, feature_document, "unconfirmed_answer")
+                return {
+                    "reply": "I couldn’t confirm the answer from the guide passages I found.",
+                    "sources": references, "points": [], "status": "not_found", "reason": "unconfirmed_answer",
+                }
+        else:
+            reply = answer_chain.invoke({
+                "context": context, "question": message,
+                "history": history,
+            }).strip()
     if not reply:
         raise RuntimeError("The local model returned an empty answer.")
     if "NO_GUIDE_ANSWER" in reply or re.search(

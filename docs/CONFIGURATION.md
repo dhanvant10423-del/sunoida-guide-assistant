@@ -15,7 +15,7 @@ is absent. Invalid ports, URLs, numbers and ranges are rejected during startup.
 | `SUNOIDA_OLLAMA_URL` | http://127.0.0.1:11434 | Ollama service address |
 | `SUNOIDA_OLLAMA_TIMEOUT` | 180 | Model request timeout in seconds |
 | `SUNOIDA_CHAT_MODEL` | qwen2.5:0.5b | Answer-generation model |
-| `SUNOIDA_VISION_MODEL` | qwen3-vl:2b-instruct | Model used to answer questions about attachments |
+| `SUNOIDA_VISION_MODEL` | qwen3-vl:2b-instruct | Model for attachments and guide yes/no decisions when installed |
 | `SUNOIDA_EMBED_MODEL` | nomic-embed-text:v1.5 | Must match the indexed embeddings |
 | `SUNOIDA_TEMPERATURE` | 0.1 | Generation variability |
 | `SUNOIDA_CONTEXT_WINDOW` | 4096 | Model context size in tokens |

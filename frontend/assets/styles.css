@@ -418,3 +418,7 @@
 .follow-up-question:hover {
   background: #fce9f5;
 }
+.related-questions { margin-top: 20px; }
+.related-questions p { font-weight: 600; }
+.related-questions button { display: block; margin: 8px 0; }
+.website-source { display: inline-block; margin: 12px 0; color: var(--magenta); }

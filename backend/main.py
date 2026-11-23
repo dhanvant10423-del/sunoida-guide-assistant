@@ -19,6 +19,7 @@ from search_guides import GuideIndexError
 from source_pages import get_document, public_guides, render_page
 from guide_figures import extract_figures, figure_path
 from point_images import guide_figure_pages
+from website_answers import related_questions, website_fallback
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -148,6 +149,10 @@ def process_chat(request: ChatRequest, uploads: list[Upload] | None = None):
                 result = answer_attachment_question(message, source, conversation, files)
             else:
                 result = answer_question(message, source=source, conversation=conversation)
+                if result["status"] == "not_found":
+                    result = website_fallback(message, source, conversation)
+            if result["status"] in {"answered", "clarification"}:
+                result = {**result, "related_questions": related_questions(message, result, source)}
         if result["status"] == "answered":
             result = {
                 **result,

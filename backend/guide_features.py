@@ -60,7 +60,7 @@ def connector_add_answer(action, document):
     if action in {"create", "add", "start creating"}:
         lead = f"Yes, {lead}"
     if action == "save":
-        lead = "**Add** opens the setup form in **ETL Connector Configuration**."
+        lead = "No. **Add** opens the setup form in **ETL Connector Configuration**."
     paragraphs = [lead]
     if re.search(
         r"\bMandatory Fields\b.*\bCountry\b.*\bLE Book\b.*\bConnector ID\b.*"

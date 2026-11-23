@@ -121,6 +121,9 @@ class ConversationApiTests(unittest.TestCase):
         fake_chain = ai_client.answer_chain.steps[0] | RunnableLambda(model) | StrOutputParser()
         patches = [
             patch.object(main, "store", self.store),
+            patch.object(main, "website_fallback", return_value={
+                "reply": "No supporting information.", "sources": [], "points": [], "status": "not_found",
+            }),
             patch.object(main, "guide_figure_pages", return_value=[]),
             patch.object(ai_client, "answer_chain", fake_chain),
             patch.object(ai_client, "search_guides", side_effect=search),

@@ -9,12 +9,48 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from ai_client import answer_question, ensure_procedure_lead
 from conversation import Conversation, title_for
+from guide_confirmation import GuideDecision, confirmation_claim, is_yes_no_question, supported_decision
 from guide_features import connector_add_action, feature_check
 from point_images import guide_figure_pages
 from search_guides import question_source
 
 
 class GuideAnswerTests(unittest.TestCase):
+    def test_yes_no_questions_are_distinguished_from_procedure_requests(self):
+        for question in (
+            "Does the Widget Menu provides options to clear the screen of all the widgets",
+            "Is the Widget Menu unable to clear all widgets?",
+            "Could you tell me whether a monitor is available?",
+        ):
+            self.assertTrue(is_yes_no_question(question), question)
+        for question in (
+            "How do I clear all widgets?",
+            "Can you explain how to check if an ETL feed has run?",
+            "Would you show me the steps for configuring a connector?",
+        ):
+            self.assertFalse(is_yes_no_question(question), question)
+
+    def test_yes_no_opening_uses_the_validated_verdict_and_source(self):
+        passages = [{"index": 2, "text": "The Widget Menu provides options to clear the screen of all the widgets."}]
+        quote = "provides options to clear the screen of all the widgets"
+        yes = GuideDecision(evidence=quote, explanation="Yes, you can clear the widgets. [1]", verdict="yes")
+        self.assertEqual(supported_decision(yes, passages), "Yes. You can clear the widgets. [2]")
+        no = GuideDecision(evidence=quote, explanation="The Widget Menu lets you clear all widgets.", verdict="no")
+        self.assertEqual(supported_decision(no, passages), "No. The Widget Menu lets you clear all widgets. [2]")
+        self.assertIsNone(supported_decision(yes.model_copy(update={"verdict": "unknown"}), passages))
+        self.assertIsNone(supported_decision(yes.model_copy(update={"evidence": "Delete every saved dashboard report"}), passages))
+        self.assertIsNone(supported_decision(no.model_copy(update={"explanation": "The guide does not provide enough evidence."}), passages))
+
+    def test_negative_ability_inverts_the_answer_to_the_positive_claim(self):
+        question, negated = confirmation_claim("Is the Widget Menu unable to clear all widgets?")
+        self.assertEqual(question, "Is the Widget Menu able to clear all widgets?")
+        self.assertTrue(negated)
+        passages = [{"index": 1, "text": "The Widget Menu enables users to clear all widgets."}]
+        decision = GuideDecision(
+            evidence=passages[0]["text"], explanation="The Widget Menu can clear all widgets.", verdict="yes",
+        )
+        self.assertEqual(supported_decision(decision, passages, negated), "No. The Widget Menu can clear all widgets. [1]")
+
     def test_connector_add_question_with_short_guide_name(self):
         document = {"id": "etl", "filename": "etl.pdf", "title": "Vision ETL", "short": "ETL"}
         pages = {

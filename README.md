@@ -7,6 +7,9 @@ Answers can include screenshots from the original PDFs. You can also attach
 your own screenshots and documents for the assistant to read.
 The assistant answers the question first, adds steps when needed, and displays
 relevant guide screenshots below the text.
+When the guides leave a Sunoida question unanswered, the app checks sunoida.com.
+Website answers explain their origin and include a link to the public source.
+This fallback needs internet access. Related question buttons appear after answers.
 
 ## Run the existing project
 
@@ -144,6 +147,8 @@ there, ask "What is the next step?" to continue through the same procedure.
 ## Asking about screenshots and files
 
 Install the Ollama vision model once to ask questions about attachments.
+The assistant also uses this model for guide questions that need a yes or no
+decision when it is available.
 
 ```bat
 ollama pull qwen3-vl:2b-instruct
