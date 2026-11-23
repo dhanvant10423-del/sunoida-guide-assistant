@@ -29,6 +29,22 @@ class ConversationScopeError(RuntimeError):
     pass
 
 
+def title_for(question, attachment=None):
+    """Turn the question into a short sidebar label without another model call."""
+    title = " ".join(question.split()).strip(" ?!.")
+    title = re.sub(
+        r"^(?:(?:please )?(?:how (?:do|can|should) (?:i|we|you)|how to|steps to|"
+        r"explain(?: about)?|tell me about|describe|show me how to|"
+        r"what (?:is|are) (?:the )?|where (?:can i|do i) (?:find|see|view))\s+)",
+        "", title, flags=re.IGNORECASE,
+    )
+    if attachment and title.casefold() == "what can you tell me about the attached files":
+        title = attachment
+    if len(title) > 60:
+        title = (title[:57].rsplit(" ", 1)[0] if " " in title[:57] else title[:57]) + "…"
+    return title[:1].upper() + title[1:]
+
+
 @dataclass
 class MessageHistory:
     """Small bounded application buffer of LangChain message objects."""

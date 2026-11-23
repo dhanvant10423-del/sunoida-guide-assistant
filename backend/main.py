@@ -12,12 +12,13 @@ from attachments import (
     AttachmentError, MAX_FILES, MAX_REQUEST_BYTES, Upload, answer_attachment_question, read_attachment,
 )
 from config import settings
-from conversation import ConversationBusyError, ConversationScopeError, store
+from conversation import ConversationBusyError, ConversationScopeError, store, title_for
 
 from ai_client import answer_question
 from search_guides import GuideIndexError
 from source_pages import get_document, public_guides, render_page
 from guide_figures import extract_figures, figure_path
+from point_images import guide_figure_pages
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -51,7 +52,7 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "mode": "local", "guide_count": len(public_guides()), "layout": "figures-only-4", "answer_policy": "guide-and-attachments", "conversation": "langchain-scoped-memory"}
+    return {"status": "ok", "mode": "local", "guide_count": len(public_guides()), "layout": "figures-below-answer", "answer_policy": "guide-and-attachments", "conversation": "langchain-scoped-memory"}
 
 
 @app.get("/api/guides")
@@ -140,12 +141,19 @@ def process_chat(request: ChatRequest, uploads: list[Upload] | None = None):
             raise HTTPException(404, str(error)) from error
     try:
         session_id = str(request.session_id or uuid4())
+        files = ()
         with store.use(session_id, scope=source) as conversation:
             if uploads or conversation.attachments:
                 files = tuple(read_attachment(upload) for upload in uploads) if uploads else conversation.attachments
                 result = answer_attachment_question(message, source, conversation, files)
             else:
                 result = answer_question(message, source=source, conversation=conversation)
+        if result["status"] == "answered":
+            result = {
+                **result,
+                "chat_title": result.get("chat_title") or title_for(message, files[0].name if files else None),
+                "figure_pages": guide_figure_pages(result["points"], result["sources"]),
+            }
         return {**result, "session_id": session_id}
     except (ConversationBusyError, ConversationScopeError) as error:
         raise HTTPException(409, str(error)) from error

@@ -341,6 +341,53 @@
 .answer-point+.answer-point{margin-top:20px}
 .answer-point>.answer-body{font-size:inherit;line-height:inherit}
 .answer-point .inline-guide{margin-top:12px}
+.guide-visuals { margin-top: 16px; }
+.guide-workflow {
+  max-width: 680px;
+  margin: 16px 0 23px;
+  padding: 14px;
+  border: 1px solid #e4d5e4;
+  border-radius: 12px;
+  background: #fff;
+}
+.guide-workflow-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  font-weight: 650;
+}
+.guide-workflow .guide-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.guide-workflow .guide-workflow-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #eedbea;
+  border-radius: 8px;
+  background: #fcf6fb;
+  line-height: 1.4;
+}
+.workflow-number {
+  flex: 0 0 23px;
+  display: grid;
+  place-items: center;
+  height: 23px;
+  border-radius: 50%;
+  background: #f5d8e8;
+  color: #880a4d;
+  font-weight: 650;
+}
 .additional-sources{margin-top:18px;padding-top:10px;border-top:1px solid var(--line)}
 .additional-sources>summary{cursor:pointer;list-style:disclosure-closed;margin:0 0 10px}
 .additional-sources[open]>summary{list-style:disclosure-open}

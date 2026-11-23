@@ -5,6 +5,8 @@ Ollama for embeddings and answers, ChromaDB for retrieval, and FastAPI to serve
 the browser interface. LangChain connects Qwen to recent conversation messages.
 Answers can include screenshots from the original PDFs. You can also attach
 your own screenshots and documents for the assistant to read.
+The assistant answers the question first, adds steps when needed, and displays
+relevant guide screenshots below the text.
 
 ## Run the existing project
 
@@ -69,6 +71,7 @@ for packages and any Ollama models you need to download.
 |   |-- search_guides.py    # Chroma search and similarity scoring
 |   |-- relevance_guard.py  # Topic checks and unsupported-question handling
 |   |-- guide_figures.py    # Embedded screenshot extraction and caching
+|   |-- guide_overview.py   # Product overviews from guide introductions
 |   |-- source_pages.py     # Guide catalog, PDF access and page browsing
 |   |-- point_images.py     # Answer-point/source-image mapping
 |   |-- launch_chatbot.py   # Startup checks and server launch
@@ -125,9 +128,13 @@ The **Chats** sidebar saves pinned chats and up to 30 other recent chats, with u
 to 40 messages each in the current browser. Open one to restore its messages and
 selected guide. Search by title or message text. Use the chat options button
 to pin, rename, delete, copy, download, or share a transcript.
+New chats get a short title from the first answered question. A title you rename
+stays in place.
 Saved chats are grouped by guide when the app opens. Use the filter beside
 **Chats** to see conversations started with a specific guide. The picker beside
 Send sets the guide for the conversation, independently of the history filter.
+To get a product overview, choose its guide beside Send and ask "Explain this
+application." You can also name the product in the question.
 The server's answer context is available while its session is active. Stopping a
 request starts a new session for the next question.
 

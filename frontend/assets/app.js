@@ -18,7 +18,7 @@ const ATTACHMENT_EXTENSIONS = /\.(?:png|jpe?g|webp|pdf|docx|txt|md|csv|json)$/i;
 
 function blankConversation() {
   const id = newConversationId();
-  return { chatId: id, sessionId: id, selected: null, title: "", messages: [] };
+  return { chatId: id, sessionId: id, selected: null, title: "", titleMode: "pending", messages: [] };
 }
 
 function loadConversation() {
@@ -30,6 +30,7 @@ function loadConversation() {
         sessionId: saved.sessionId,
         selected: saved.selected || null,
         title: saved.title || saved.messages.find((message) => message.role === "You")?.text || "",
+        titleMode: saved.titleMode || "manual",
         messages: saved.messages,
       };
     }
@@ -78,7 +79,7 @@ function writeHistory(history, prune = false) {
   }
 }
 
-function saveConversation(archive = true) {
+function saveConversation(archive = true, generatedTitle = "") {
   const { chatId, sessionId, selected, messages } = state;
   const latest = loadHistory(state.history);
   if (latest.deleted.includes(chatId)) {
@@ -87,9 +88,15 @@ function saveConversation(archive = true) {
     return false;
   }
   const saved = latest.chats.find((chat) => chat.chatId === chatId);
-  const title = saved?.title || state.title;
+  let title = saved?.title || state.title;
+  let titleMode = saved ? saved.titleMode || "manual" : state.titleMode;
+  if (titleMode === "pending" && typeof generatedTitle === "string" && generatedTitle.trim()) {
+    title = generatedTitle.trim().slice(0, 120);
+    titleMode = "generated";
+  }
   state.title = title;
-  const snapshot = { chatId, sessionId, selected, title, pinned: Boolean(saved?.pinned), messages: messages.slice(-40) };
+  state.titleMode = titleMode;
+  const snapshot = { chatId, sessionId, selected, title, titleMode, pinned: Boolean(saved?.pinned), messages: messages.slice(-40) };
   try {
     sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
   } catch { /* Chat can continue in the current page when storage is unavailable. */ }
@@ -414,6 +421,7 @@ function updateSavedChat(changes) {
   }
   if (chat.chatId === state.chatId) {
     state.title = updated.title;
+    state.titleMode = updated.titleMode || "manual";
     saveConversation(false);
   } else {
     showHistory();
@@ -474,8 +482,8 @@ function activateChat(chat, preservePending = true) {
     state.sessionId = newConversationId();
     if (preservePending) saveConversation();
   }
-  const { chatId, sessionId, selected, title, messages } = chat;
-  Object.assign(state, { chatId, sessionId, selected, title, messages: [...messages], attachments: [] });
+  const { chatId, sessionId, selected, title, titleMode = "manual", messages } = chat;
+  Object.assign(state, { chatId, sessionId, selected, title, titleMode, messages: [...messages], attachments: [] });
   saveConversation(false);
   input.value = "";
   status.textContent = "";
@@ -501,7 +509,7 @@ function makeUserMessage(text, files = []) {
 }
 
 // Build supported formatting with DOM nodes. Model text is never inserted as HTML.
-function inlineText(parent, text, sources, onCitation = () => {}) {
+function inlineText(parent, text, sources) {
   const tokens = /(\[\d+\]|\*\*[^*\n]+\*\*|`[^`\n]+`)/g;
   let position = 0;
   for (const match of text.matchAll(tokens)) {
@@ -515,11 +523,10 @@ function inlineText(parent, text, sources, onCitation = () => {}) {
         button.setAttribute("aria-label", `View reference ${source.index}: ${source.title}, page ${source.page}`);
         button.addEventListener("click", () => openSource(source));
         parent.append(button);
-        onCitation(source);
       } else parent.append(document.createTextNode(token));
     } else if (token.startsWith("**")) {
       const strong = element("strong");
-      inlineText(strong, token.slice(2, -2), sources, onCitation);
+      inlineText(strong, token.slice(2, -2), sources);
       parent.append(strong);
     }
     else parent.append(element("code", "", token.slice(1, -1)));
@@ -585,140 +592,98 @@ function pointPageSources(section, sources) {
   });
 }
 
-function renderAnswer(text, sources, answerBlocks, displayedSources = new Set()) {
+function renderAnswer(text, sources, answerBlocks) {
   const body = element("div", "answer-body");
-  let allowedImageKeys = null;
-  function appendImages(parent, cited) {
-    for (const source of cited) {
-      const key = sourceKey(source);
-      if (!source.figure_id || displayedSources.size >= 4 || displayedSources.has(key) || (allowedImageKeys && !allowedImageKeys.has(key))) continue;
-      parent.append(inlineGuide(source));
-      displayedSources.add(key);
-    }
-  }
-  const sections = Array.isArray(answerBlocks) && answerBlocks.length && answerBlocks.every((block) => block && typeof block.text === "string" && Array.isArray(block.source_indices))
-    ? answerBlocks : [{ text, source_indices: [] }];
+  const sections = Array.isArray(answerBlocks) && answerBlocks.length &&
+    answerBlocks.every((block) => block && typeof block.text === "string")
+    ? answerBlocks : [{ text }];
   for (const section of sections) {
-  let related = pointPageSources(section, sources);
-  // Citations keep their links, but only the selected point displays a page.
-  allowedImageKeys = Array.isArray(section.pages) ? new Set(related.map(sourceKey)) : null;
-  const parts = section.text.split(/(```[\s\S]*?```)/g);
-  for (const part of parts) {
-    if (part.startsWith("```")) {
-      const pre = element("pre");
-      pre.append(element("code", "", part.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")));
-      body.append(pre);
-      continue;
-    }
-    for (const block of part.split(/\n\s*\n/).filter((value) => value.trim())) {
-      const lines = block.trim().split("\n");
-      const listKind = lines.every((line) => /^\s*[-*]\s+/.test(line)) ? "ul"
-        : lines.every((line) => /^\s*\d+[.)]\s+/.test(line)) ? "ol" : null;
-      if (listKind) {
-        const list = element(listKind);
-        if (listKind === "ol") list.start = Number(lines[0].match(/^\s*(\d+)/)[1]);
-        for (const line of lines) {
-          const item = element("li");
-          const cited = related;
-          related = [];
-          const itemText = element("span", "answer-step-text");
-          inlineText(itemText, line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, ""), sources, (source) => cited.push(source));
-          item.append(itemText);
-          appendImages(item, cited);
-          list.append(item);
+    for (const part of section.text.split(/(```[\s\S]*?```)/g)) {
+      if (part.startsWith("```")) {
+        const pre = element("pre");
+        pre.append(element("code", "", part.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")));
+        body.append(pre);
+        continue;
+      }
+      for (const block of part.split(/\n\s*\n/).filter((value) => value.trim())) {
+        const lines = block.trim().split("\n");
+        const listKind = lines.every((line) => /^\s*[-*]\s+/.test(line)) ? "ul"
+          : lines.every((line) => /^\s*\d+[.)]\s+/.test(line)) ? "ol" : null;
+        if (listKind) {
+          const list = element(listKind);
+          if (listKind === "ol") list.start = Number(lines[0].match(/^\s*(\d+)/)[1]);
+          for (const line of lines) {
+            const item = element("li");
+            inlineText(item, line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, ""), sources);
+            list.append(item);
+          }
+          body.append(list);
+        } else if (lines.length === 1 && /^#{1,4}\s/.test(block)) {
+          const heading = element("h3");
+          inlineText(heading, block.replace(/^#{1,4}\s+/, ""), sources);
+          body.append(heading);
+        } else {
+          const paragraph = element("p");
+          lines.forEach((line, index) => {
+            if (index) paragraph.append(document.createElement("br"));
+            inlineText(paragraph, line, sources);
+          });
+          body.append(paragraph);
         }
-        body.append(list);
-      } else if (lines.length === 1 && /^#{1,4}\s/.test(block)) {
-        const heading = element("h3");
-        const cited = related;
-        related = [];
-        inlineText(heading, block.replace(/^#{1,4}\s+/, ""), sources, (source) => cited.push(source));
-        body.append(heading);
-        appendImages(body, cited);
-      } else {
-        const paragraph = element("p");
-        const cited = related;
-        related = [];
-        lines.forEach((line, index) => {
-          if (index) paragraph.append(document.createElement("br"));
-          inlineText(paragraph, line, sources, (source) => cited.push(source));
-        });
-        body.append(paragraph);
-        appendImages(body, cited);
       }
     }
   }
-  }
-  return { body, displayedSources };
-}
-
-function planPointImages(points, sources) {
-  const anchors = new Map();
-  points.forEach((point, position) => {
-    const text = (point.original_text || point.text).trim();
-    const priority = /^\d+[.)]\s/.test(text) ? 0 : /^[-*]\s/.test(text) ? 1 : 2;
-    const indices = Array.isArray(point.source_indices) ? point.source_indices : [];
-    for (const source of pointPageSources({ ...point, source_indices: indices }, sources)) {
-      const key = sourceKey(source);
-      const current = anchors.get(key);
-      if (!current || priority < current.priority) anchors.set(key, { position, priority });
-    }
-  });
-  return points.map((point, position) => {
-    if (!Array.isArray(point.pages)) return point;
-    return { ...point, pages: point.pages.map((page) => page && typeof page === "object"
-      ? { ...page, figures: Array.isArray(page.figures) ? page.figures.map((figure) => figure && typeof figure === "object" ? ({ ...figure,
-          show_image: figure.show_image !== false && anchors.get(sourceKey(figure))?.position === position }) : figure) : [] }
-      : page) };
-  });
+  return body;
 }
 
 function renderPointAnswer(points, sources) {
   const body = element("div", "answer-body answer-points");
-  const displayedSources = new Set();
-  for (const [position, point] of planPointImages(points, sources).entries()) {
-    const indices = Array.isArray(point.source_indices) ? point.source_indices
-      : (Array.isArray(point.pages) ? point.pages.map((page) => page.index) : []);
-    const rendered = renderAnswer(point.text, sources, [{ ...point, source_indices: indices }], displayedSources);
+  for (const [position, point] of points.entries()) {
     const section = element("section", "answer-point");
     section.dataset.pointPosition = String(position + 1);
-    section.append(rendered.body);
+    section.append(renderAnswer(point.text, sources));
     body.append(section);
   }
-  return { body, displayedSources };
+  return body;
 }
 
-function sourceCard(source) {
-  const card = element("article", "source-card");
-  const thumbnail = element("button", "source-thumb");
-  thumbnail.type = "button";
-  thumbnail.setAttribute("aria-label", `Enlarge ${source.title}, page ${source.page}`);
-  const image = element("img");
-  image.loading = "lazy";
-  image.alt = `Original ${source.title} guide, PDF page ${source.page}`;
-  image.src = localSourceUrl(source.image_url);
-  image.addEventListener("error", () => {
-    image.remove();
-    thumbnail.append(element("span", "image-unavailable", "Preview unavailable. Open the PDF below."));
-  }, { once: true });
-  const enlarge = element("span", "enlarge-icon");
-  enlarge.append(icon("external"));
-  thumbnail.append(image, element("span", "source-number", `[${source.index}]`), enlarge);
-  thumbnail.addEventListener("click", () => openSource(source));
-  const info = element("div", "source-info");
-  const title = element("button", "source-title", source.title);
-  title.type = "button";
-  title.addEventListener("click", () => openSource(source));
-  const meta = element("div", "source-meta");
-  const link = element("a", "", "Open PDF");
-  link.href = localSourceUrl(source.pdf_url);
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.append(icon("external"));
-  meta.append(element("span", "", `PDF page ${source.page}`), link);
-  info.append(title, meta);
-  card.append(thumbnail, info);
-  return card;
+function appendGuideVisuals(article, data, sources, points) {
+  const pages = Array.isArray(data.figure_pages) ? data.figure_pages
+    : (points || []).flatMap((point) => Array.isArray(point.pages) ? point.pages : []);
+  const visuals = element("div", "answer-body guide-visuals");
+  const seenFigures = new Set();
+  const seenPages = new Set();
+  for (const source of pointPageSources({ pages }, sources)) {
+    const page = `${source.document_id}:${source.page}`;
+    if (seenFigures.has(source.figure_id) || seenPages.has(page)) continue;
+    seenFigures.add(source.figure_id);
+    seenPages.add(page);
+    visuals.append(inlineGuide(source));
+    if (seenFigures.size === 4) break;
+  }
+  const workflow = data.workflow;
+  const workflowSource = sources.find((source) => source.index === workflow?.source_index);
+  if (workflowSource && Array.isArray(workflow.steps) && workflow.steps.length &&
+      workflow.steps.every((step) => typeof step === "string")) {
+    const figure = element("figure", "guide-workflow");
+    const caption = element("figcaption", "guide-workflow-caption", "Workflow from the guide");
+    const source = element("a", "inline-guide-pdf", `PDF page ${workflowSource.page}`);
+    source.href = localSourceUrl(workflowSource.pdf_url);
+    source.target = "_blank";
+    source.rel = "noopener";
+    caption.append(source);
+    const steps = element("ol", "guide-workflow-steps");
+    for (const [index, step] of workflow.steps.entries()) {
+      const item = element("li");
+      const number = element("span", "workflow-number", String(index + 1));
+      number.setAttribute("aria-hidden", "true");
+      item.append(number, element("span", "", step));
+      steps.append(item);
+    }
+    figure.append(caption, steps);
+    visuals.append(figure);
+  }
+  if (visuals.children.length) article.append(visuals);
 }
 
 function makeAssistantMessage(data) {
@@ -730,8 +695,9 @@ function makeAssistantMessage(data) {
     heading.append(element("span", "conversation-context", "Used earlier messages"));
   }
   const points = Array.isArray(data.points) && data.points.length && data.points.every((point) => point && typeof point.text === "string") ? data.points : null;
-  const rendered = points ? renderPointAnswer(points, sources) : renderAnswer(data.reply, sources, data.answer_blocks);
-  article.append(heading, rendered.body);
+  const answer = points ? renderPointAnswer(points, sources) : renderAnswer(data.reply, sources, data.answer_blocks);
+  article.append(heading, answer);
+  appendGuideVisuals(article, data, sources, points);
   if (sources.length) {
     const extra = element("details", "additional-sources");
     const label = element("summary", "sources-header");
@@ -821,7 +787,7 @@ async function submitQuestion(question) {
     answerArticle = makeAssistantMessage(data);
     const references = (data.sources || []).map((source) => `[${source.index}] ${source.filename}, PDF page ${source.page}`).join("\n");
     state.messages.push({ role: "Sunoida Assistant", data, text: data.reply + (references ? "\n\nRetrieved references:\n" + references : "") });
-    saveConversation();
+    saveConversation(true, data.chat_title);
   } catch (error) {
     if (sequence !== state.sequence) return;
     // A stopped request may still complete on the server. Do not remember an
@@ -969,7 +935,7 @@ $("chat-rename-form").addEventListener("submit", (event) => {
     $("chat-tools-status").textContent = "Enter a chat title.";
     return;
   }
-  if (updateSavedChat({ title })) chatTools.close();
+  if (updateSavedChat({ title, titleMode: "manual" })) chatTools.close();
 });
 $("share-chat").addEventListener("click", () => {
   const chat = selectedSavedChat();

@@ -3,6 +3,7 @@
 import hashlib
 import os
 import threading
+from contextlib import closing
 from functools import lru_cache
 from pathlib import Path
 
@@ -91,6 +92,14 @@ def reference_for(document, page, index, excerpt=""):
         "preview_url": f"{base}/pages/{page}/preview?size=full",
         "pdf_url": f"{base}/pdf#page={page}",
     }
+
+
+def read_page_text(document, page):
+    if not 1 <= page <= page_count(document):
+        return ""
+    with PDF_LOCK, pdfium.PdfDocument(document["path"]) as pdf:
+        with closing(pdf[page - 1]) as sheet, closing(sheet.get_textpage()) as text:
+            return text.get_text_bounded()
 
 
 def render_page(document_id, page_number, size="thumb"):

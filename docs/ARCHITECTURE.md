@@ -24,8 +24,8 @@ of the current source package.
    evidence.
 6. The response is split into points and mapped to validated source pages.
 7. Substantial embedded PDF images are extracted, filtered and cached.
-8. The browser displays each image once beneath a related step, with compact
-   source captions and a collapsed list of additional references.
+8. The browser displays relevant screenshots below the answer text, with one
+   image per guide page and a collapsed list of additional references.
 9. Successful grounded turns enter memory; refusals, greetings and failed requests
    do not. Old citation numbers are removed from remembered answers because every
    request retrieves and numbers its own sources again.
@@ -42,6 +42,7 @@ of the current source package.
 | `conversation.py` | LangChain message buffer, follow-up topic resolution, per-session locks, TTL and capacity |
 | `source_pages.py` | Allow-listed guide catalog and full-page browsing |
 | `guide_figures.py` | Embedded raster image extraction and content-based caching |
+| `guide_overview.py` | Product introductions and the Data Quality workflow visual |
 | `point_images.py` | Point/source metadata and sparse citations |
 | `launch_chatbot.py` | Preflight checks, listening port reservation and browser launch |
 

@@ -121,9 +121,12 @@ class ConversationApiTests(unittest.TestCase):
         fake_chain = ai_client.answer_chain.steps[0] | RunnableLambda(model) | StrOutputParser()
         patches = [
             patch.object(main, "store", self.store),
+            patch.object(main, "guide_figure_pages", return_value=[]),
             patch.object(ai_client, "answer_chain", fake_chain),
             patch.object(ai_client, "search_guides", side_effect=search),
-            patch.object(ai_client, "catalog", return_value={"etl": {"filename": "ETL.pdf", "id": "etl", "short": "ETL"}}),
+            patch.object(ai_client, "catalog", return_value={"etl": {
+                "filename": "ETL.pdf", "id": "etl", "short": "ETL", "title": "Vision ETL",
+            }}),
             patch.object(ai_client, "reference_for", side_effect=lambda doc, page, index, text:
                          {"index": index, "filename": doc["filename"], "title": "Vision ETL", "page": page}),
             patch.object(ai_client, "build_answer_blocks", return_value=[]),

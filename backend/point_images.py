@@ -102,6 +102,34 @@ def render_point_pages(blocks, references):
     return points
 
 
+def guide_figure_pages(points, references):
+    """Choose up to four distinct figures across the relevant source pages."""
+    embedded = {
+        (page["document_id"], page["page"]): page["figures"]
+        for point in points for page in point.get("pages", [])
+    }
+    ordered = sorted(references, key=lambda source: (source["document_id"], source["page"]) not in embedded)
+    seen_figures, seen_pages = set(), set()
+    output = []
+    for source in ordered:
+        key = (source["document_id"], source["page"])
+        if key in seen_pages:
+            continue
+        seen_pages.add(key)
+        try:
+            figures = embedded[key] if key in embedded else extract_figures(*key)
+        except Exception:
+            logging.exception("Could not extract a screenshot from a guide reference")
+            continue
+        figure = next((item for item in figures if item["figure_id"] not in seen_figures), None)
+        if figure:
+            seen_figures.add(figure["figure_id"])
+            output.append({"index": source["index"], "document_id": key[0], "page": key[1], "figures": [figure]})
+            if len(output) == 4:
+                break
+    return output
+
+
 if __name__ == "__main__":
     import argparse
     from source_pages import catalog

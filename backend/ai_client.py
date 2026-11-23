@@ -1,4 +1,4 @@
-"""Ground answers in guide text and place real page previews beside related text."""
+"""Ground answers in the selected product guide and resolve follow-ups."""
 
 import logging
 import math
@@ -11,7 +11,8 @@ from langchain_ollama import ChatOllama
 from config import settings
 from conversation import is_follow_up, previous_step, resolve_follow_up
 from guide_followups import ETL_SETUP_REQUEST, offer_for
-from search_guides import EMBED_MODEL, MIN_SIMILARITY, GuideIndexError, search_guides
+from guide_overview import is_overview, product_overview
+from search_guides import EMBED_MODEL, MIN_SIMILARITY, GuideIndexError, question_source, search_guides
 from relevance_guard import greeting_reply, refusal, supported_sources
 from source_pages import catalog, reference_for
 from point_images import render_point_pages, reply_with_page_labels
@@ -19,7 +20,11 @@ from point_images import render_point_pages, reply_with_page_labels
 client = Client(host=settings.ollama_url, timeout=settings.ollama_timeout)
 SYSTEM_PROMPT = """
 You are the Sunoida guide assistant. Answer using ONLY the supplied guide excerpts.
-Be direct and concise. Use numbered steps for procedures and preserve exact UI labels.
+Open with a short paragraph that directly answers the latest question. State the
+actual definition, outcome, menu location, or key action. Skip introductory
+phrases such as "Here are the steps". For procedures, place the numbered steps
+after that paragraph. Preserve exact UI labels. Use steps only when requested
+or needed to explain a procedure.
 Cite supporting excerpts with their provided numbers, for example [1].
 Put citations beside the paragraph or step they support. Separate distinct points
 into paragraphs. Cite a guide page only where useful; do not repeat the same citation
@@ -119,6 +124,26 @@ def split_answer(reply):
                 current.append(line)
         append_text(current)
     return blocks
+
+
+def ensure_procedure_lead(reply):
+    """Put the first actionable sentence before a list that opens with filler."""
+    blocks = split_answer(reply)
+    for index, block in enumerate(blocks[:2]):
+        step = re.match(r"^1[.)]\s+(.+)", block["text"])
+        if not step:
+            continue
+        if index and not re.search(
+            r"(?:\bhere (?:are|is) (?:the |how)|\bfollow (?:these|the) steps\b|\bsteps? (?:to|for)\b)",
+            blocks[0]["text"], re.IGNORECASE,
+        ):
+            return reply
+        lead = re.split(r"(?<=[.!?])\s+(?=[A-Z])", step[1], maxsplit=1)[0].strip()
+        if lead:
+            if lead[-1] not in ".!?" and not re.search(r"\[\d+\]$", lead):
+                lead += "."
+            return lead + "\n\n" + "\n\n".join(item["text"] for item in blocks[index:])
+    return reply
 
 
 def build_answer_blocks(reply, passages):
@@ -262,16 +287,37 @@ def answer_question(message: str, source=None, conversation=None):
     prior_step = previous_step(message, conversation)
     if prior_step is not None:
         return prior_step
+    documents = {item["filename"]: item for item in catalog().values()}
+    named_source = question_source(message)
+    overview_source = named_source or source or (conversation.source if conversation else None)
+    overview_document = documents.get(overview_source)
+    if is_overview(message, overview_document):
+        if source and named_source and source != named_source:
+            return {"reply": "This chat uses a different guide. Start a new chat to ask about that product.",
+                    "sources": [], "points": [], "status": "clarification"}
+        if overview_document:
+            overview = product_overview(overview_document)
+            if overview:
+                if conversation:
+                    remember_answer(conversation, message, message, overview, overview_source)
+                return overview
+        elif not overview_source:
+            return {
+                "reply": ("The Sunoida User Guide Assistant answers questions using Sunoida product guides. "
+                          "It can explain features, walk you through tasks, and answer questions about "
+                          "screenshots or files you attach. For a product overview, choose a guide beside "
+                          "Send in a new chat or name the product in your question."),
+                "sources": [], "points": [], "status": "answered",
+                "chat_title": "About the guide assistant",
+            }
     if is_follow_up(message) and not (conversation and conversation.anchor) and not source:
-        from search_guides import question_source
-        if not question_source(message):
+        if not named_source:
             return {"reply": "Which Sunoida product and feature do you mean? Please ask a complete question to start this conversation.",
                     "sources": [], "points": [], "status": "clarification", "used_history": False}
     retrieval_question, follow_up = resolve_follow_up(message, conversation)
     follow_up = follow_up or accepted
     if follow_up and not source:
         source = conversation.source
-    documents = {item["filename"]: item for item in catalog().values()}
     setup_request = bool(ETL_SETUP_REQUEST.fullmatch(message))
     etl_source = next((filename for filename, document in documents.items() if document.get("short") == "ETL"), None)
     if setup_request and not source:
@@ -321,7 +367,8 @@ def answer_question(message: str, source=None, conversation=None):
     )
     if procedure:
         bullets = procedure[1]
-        reply = "\n".join(
+        reply = ("Use **Publish** from the feed list. The feed moves to **Pending**, and a "
+                 "**Checker** must authorize it before ETL can process it.\n\n") + "\n".join(
             f"{step}. {bullet}" + (" [1]" if re.search(r"\bclick\s+publish\b", bullet, re.IGNORECASE) else "")
             for step, bullet in enumerate(bullets, start=1)
         )
@@ -337,6 +384,7 @@ def answer_question(message: str, source=None, conversation=None):
             "context": context, "question": message,
             "history": history,
         }).strip()
+        reply = ensure_procedure_lead(reply)
     if not reply:
         raise RuntimeError("The local model returned an empty answer.")
     if "NO_GUIDE_ANSWER" in reply or re.search(
@@ -376,17 +424,24 @@ def answer_question(message: str, source=None, conversation=None):
     if suggestion:
         result["suggested_follow_up"] = suggestion
     if conversation is not None:
-        if not follow_up:
-            conversation.reset(conversation.scope)
-        conversation.remember(
-            message, reply, conversation.anchor if follow_up else message,
-            next(iter(filenames)) if len(filenames) == 1 else source,
+        remember_answer(
+            conversation, message, retrieval_question, result,
+            next(iter(filenames)) if len(filenames) == 1 else source, follow_up, suggestion,
         )
-        conversation.latest_query = retrieval_question
-        conversation.latest_answer = result
-        conversation.current_step = None
-        conversation.pending_suggestion = suggestion["question"] if suggestion else None
     return result
+
+
+def remember_answer(conversation, question, query, result, source, follow_up=False, suggestion=None):
+    if not follow_up:
+        conversation.reset(conversation.scope)
+    conversation.remember(
+        question, result.get("original_reply", result["reply"]),
+        conversation.anchor if follow_up else question, source,
+    )
+    conversation.latest_query = query
+    conversation.latest_answer = result
+    conversation.current_step = None
+    conversation.pending_suggestion = suggestion["question"] if suggestion else None
 
 
 def generate_reply(message: str) -> str:
