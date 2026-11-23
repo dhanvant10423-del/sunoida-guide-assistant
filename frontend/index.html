@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#c60067">
   <title>Sunoida · Guide Assistant</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css?v=chat-tools">
+  <link rel="stylesheet" href="/assets/styles.css?v=chat-layout">
   <script src="/assets/inline-pages.js?v=chat-tools" defer></script>
 </head>
 <body>
@@ -48,10 +48,12 @@
 
   <main id="workspace" class="workspace is-empty">
     <header class="topbar">
-      <div class="topbar-title"><strong>Sunoida<span class="brand-dot">.</span></strong><span>Guide Assistant</span></div>
+      <div class="topbar-title">
+        <button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Open chat history" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
+        <strong>Sunoida<span class="brand-dot">.</span></strong><span>Guide Assistant</span>
+      </div>
       <div class="toolbar-actions">
         <button id="export-chat" class="toolbar-button" type="button" aria-label="Export chat" disabled><svg class="icon"><use href="#i-download"/></svg><span>Export chat</span></button>
-        <button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Open chat history" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button>
       </div>
     </header>
 
@@ -64,11 +66,12 @@
         <label class="sr-only" for="message">Ask a question about your Sunoida guides</label>
         <textarea id="message" rows="2" maxlength="2000" placeholder="Ask anything about your Sunoida guides…" required></textarea>
         <div class="composer-bottom">
+          <span id="character-count">0 / 2000</span>
           <div class="guide-control">
-            <label class="guide-picker" for="guide-select"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span class="sr-only">Search guide</span><select id="guide-select" disabled><option value="">All product guides</option></select></label>
             <button id="open-guide" class="icon-button" type="button" aria-label="Open selected guide" title="Open selected guide" hidden><svg class="icon"><use href="#i-external"/></svg></button>
+            <label class="guide-picker" for="guide-select"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span class="sr-only">Search guide</span><select id="guide-select" disabled><option value="">All product guides</option></select></label>
           </div>
-          <div class="composer-actions"><span id="character-count">0 / 2000</span><button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+          <button id="send" type="submit" class="send-button" aria-label="Send question" disabled><svg class="icon"><use href="#i-arrow"/></svg></button>
         </div>
       </form>
       <div class="composer-footer"><p>Answers can make mistakes. Check the retrieved guide pages.</p><span>Enter to send · Shift + Enter for a new line</span></div>
